@@ -2,6 +2,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 import activitiesRouter from './routes/activities.js'
+import callsRouter from './routes/calls.js'
 import contactsRouter from './routes/contacts.js'
 import uploadsRouter from './routes/uploads.js'
 import authRouter from './routes/auth.js'
@@ -30,6 +31,7 @@ app.use('/api/auth', authRouter)
 app.use('/api/admin', adminRouter)
 app.use('/api/contacts', contactsRouter)
 app.use('/api/activities', activitiesRouter)
+app.use('/api/calls', callsRouter)
 app.use('/api/uploads', uploadsRouter)
 
 async function start() {

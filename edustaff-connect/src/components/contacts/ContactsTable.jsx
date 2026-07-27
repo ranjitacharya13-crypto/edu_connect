@@ -1,12 +1,7 @@
-import { CheckCircle2, FileText, PhoneCall, Trash2, UserRound } from 'lucide-react'
+import { PhoneCall, Trash2, UserRound } from 'lucide-react'
 import { toneClasses } from '../../services/data'
 
-export default function ContactsTable({ contacts, onCall, onResolve, onAddNote, user, teachers = [], onAssign, onDelete }) {
-  const initiateCall = (contact) => {
-    window.location.href = `tel:${contact.phone?.replace(/\D/g, '')}`
-    onCall(contact)
-  }
-
+export default function ContactsTable({ contacts, onCall, user, teachers = [], onAssign, onDelete, callingId }) {
   return (
     <div className="glass-panel rounded-2xl sm:rounded-3xl border shadow-glass overflow-hidden">
       <div className="overflow-x-auto">
@@ -21,7 +16,7 @@ export default function ContactsTable({ contacts, onCall, onResolve, onAddNote, 
           </thead>
           <tbody className="divide-y divide-slate-200/70">
             {contacts.map((contact) => (
-              <tr key={contact.name || contact._id} className="hover:bg-white/60 transition bg-white/45">
+              <tr key={contact._id || contact.name} className="hover:bg-white/60 transition bg-white/45">
                 <td className="px-2 sm:px-4 py-3 sm:py-4">
                   <div className="flex items-center gap-2">
                     <div className={`grid size-8 sm:size-10 shrink-0 place-items-center rounded-lg sm:rounded-xl ${toneClasses[contact.tone]}`}>
@@ -29,6 +24,7 @@ export default function ContactsTable({ contacts, onCall, onResolve, onAddNote, 
                     </div>
                     <div className="min-w-0">
                       <p className="font-black text-slate-950 truncate text-xs sm:text-sm">{contact.student?.name || contact.student || contact.name || '—'}</p>
+                      {contact.student?.grade && <p className="text-[10px] sm:text-xs font-bold text-slate-500 truncate">{contact.student.grade}</p>}
                     </div>
                   </div>
                 </td>
@@ -47,12 +43,17 @@ export default function ContactsTable({ contacts, onCall, onResolve, onAddNote, 
                 </td>}
                 <td className="px-2 sm:px-4 py-3 sm:py-4">
                   <div className="flex gap-1 sm:gap-2 flex-wrap">
+                    {/* Starting a call logs it to the Calls section, where notes are kept. */}
                     <button
-                      onClick={() => initiateCall(contact)}
-                      className="grid size-8 sm:size-9 place-items-center rounded-lg bg-blue-600/80 text-white hover:bg-blue-700 transition shadow-md flex-shrink-0"
-                      title="Call"
+                      onClick={() => onCall(contact)}
+                      disabled={callingId === contact._id}
+                      className="inline-flex min-h-8 sm:min-h-9 items-center gap-1.5 rounded-lg bg-blue-600/90 px-2.5 sm:px-3 text-white hover:bg-blue-700 transition shadow-md disabled:opacity-60"
+                      title="Call and track"
                     >
                       <PhoneCall size={14} />
+                      <span className="text-[11px] sm:text-xs font-black">
+                        {callingId === contact._id ? 'Calling…' : 'Call'}
+                      </span>
                     </button>
                     {user?.role === 'admin' && <button
                       onClick={() => onDelete(contact)}
@@ -61,20 +62,6 @@ export default function ContactsTable({ contacts, onCall, onResolve, onAddNote, 
                     >
                       <Trash2 size={14} />
                     </button>}
-                    <button
-                      onClick={() => onAddNote(contact)}
-                      className="grid size-8 sm:size-9 place-items-center rounded-lg bg-amber-600/80 text-white hover:bg-amber-700 transition shadow-md flex-shrink-0"
-                      title="Add Note"
-                    >
-                      <FileText size={14} />
-                    </button>
-                    <button
-                      onClick={() => onResolve(contact)}
-                      className="grid size-8 sm:size-9 place-items-center rounded-lg bg-emerald-600/80 text-white hover:bg-emerald-700 transition shadow-md flex-shrink-0"
-                      title="Resolve"
-                    >
-                      <CheckCircle2 size={14} />
-                    </button>
                   </div>
                 </td>
               </tr>
@@ -82,6 +69,10 @@ export default function ContactsTable({ contacts, onCall, onResolve, onAddNote, 
           </tbody>
         </table>
       </div>
+
+      {!contacts.length && (
+        <p className="px-4 py-12 text-center text-sm font-bold text-slate-500">No students match this search.</p>
+      )}
     </div>
   )
 }

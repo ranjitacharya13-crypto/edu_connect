@@ -9,7 +9,7 @@
     "server": "nodemon server/index.js",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node --test server/*.test.js",
+    "test": "node --test server/*.test.js server/routes/*.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

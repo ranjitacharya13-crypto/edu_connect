@@ -3,6 +3,8 @@ import mongoose from 'mongoose'
 const activitySchema = new mongoose.Schema(
   {
     contact: { type: mongoose.Schema.Types.ObjectId, ref: 'Contact', default: null },
+    // Notes are always written against a tracked call, so history stays together.
+    call: { type: mongoose.Schema.Types.ObjectId, ref: 'Call', default: null, index: true },
     type: {
       type: String,
       enum: ['call', 'note', 'missed-call', 'medical', 'admission'],

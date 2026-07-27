@@ -49,4 +49,23 @@ export const activitiesApi = {
     api.patch(`/activities/${id}`, data).then((r) => r.data),
 }
 
+// --- Calls (tracked call history + the notes attached to each call) ---
+export const callsApi = {
+  list: (params) => api.get('/calls', { params }).then((r) => r.data),
+
+  // Called the moment the teacher taps the call button.
+  start: (contactId) => api.post('/calls', { contactId }).then((r) => r.data),
+
+  // Record the outcome: attended, missed, no-answer, busy, ...
+  setStatus: (id, status, extra = {}) =>
+    api.patch(`/calls/${id}`, { status, ...extra }).then((r) => r.data),
+
+  notes: (id) => api.get(`/calls/${id}/notes`).then((r) => r.data),
+
+  addNote: (id, summary) =>
+    api.post(`/calls/${id}/notes`, { summary }).then((r) => r.data),
+
+  remove: (id) => api.delete(`/calls/${id}`).then((r) => r.status === 204),
+}
+
 export default api

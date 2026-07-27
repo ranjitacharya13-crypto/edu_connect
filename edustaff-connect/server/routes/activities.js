@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 })
 
 router.post('/', async (req, res) => {
-  const { contactId, summary, type = 'note', outcome = '', priority = 'normal' } = req.body
+  const { contactId, callId = null, summary, type = 'note', outcome = '', priority = 'normal' } = req.body
   if (!summary?.trim()) {
     return res.status(400).json({ message: 'Note text is required' })
   }
@@ -40,6 +40,7 @@ router.post('/', async (req, res) => {
   const contactName = contact?.student?.name || contact?.name || 'General'
   const activity = await Activity.create({
     contact: contact?._id || null,
+    call: callId,
     type,
     title: type === 'note' ? `Note for ${contactName}` : req.body.title || 'Activity',
     contactName,

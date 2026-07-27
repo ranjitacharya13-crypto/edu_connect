@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import {
   ArrowRight, BarChart3, Eye, EyeOff, GraduationCap, LogIn,
-  MessageSquareText, PhoneCall, Plus, Search, Settings, Trash2, UserPlus, X,
+  Plus, Search, Settings, Trash2, UserPlus,
 } from 'lucide-react'
 import { useTheme } from './context/ThemeContext'
 import { useToast } from './context/ToastContext'
 import Header from './components/layout/Header'
 import BottomNav from './components/layout/BottomNav'
 import ContactsTable from './components/contacts/ContactsTable'
+import CallsSection from './components/calls/CallsSection'
+import ActiveCallModal from './components/calls/ActiveCallModal'
 import IconButton from './components/ui/IconButton'
 import StudentUpload from './components/uploads/StudentUpload'
-import { activitiesApi, adminApi, authApi, contactsApi } from './services/api'
+import { adminApi, authApi, callsApi, contactsApi } from './services/api'
 
 function FloatingOrbs() {
   return <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
@@ -162,96 +164,29 @@ function Metric({ label, value }) {
 function Placeholder({ icon: Icon, title }) {
   return <div className="py-20 text-center"><Icon className="mx-auto text-slate-400" size={42} /><h2 className="mt-3 text-2xl font-black">{title}</h2></div>
 }
-
-function NoteModal({ contact, onClose, onSave }) {
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const studentName = contact?.student?.name || contact?.name || 'student'
-
-  async function submit(event) {
-    event.preventDefault()
-    if (!note.trim()) {
-      setError('Please enter a note before saving.')
-      return
-    }
-
-    setSaving(true)
-    setError('')
-    try {
-      await onSave(note.trim())
-    } catch (saveError) {
-      setError(saveError.response?.data?.message || 'Could not save note')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
-    <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-3xl border bg-slate-50 p-6 shadow-2xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase text-blue-700">Add note</p>
-          <h2 className="text-2xl font-black text-slate-950">{studentName}</h2>
-        </div>
-        <button type="button" onClick={onClose} className="grid size-9 place-items-center rounded-xl text-slate-500 hover:bg-slate-200">
-          <X size={20} />
-        </button>
-      </div>
-      <label className="mt-5 block text-xs font-black uppercase tracking-wider text-slate-600">Note</label>
-      <textarea
-        value={note}
-        onChange={(event) => { setNote(event.target.value); setError('') }}
-        rows={5}
-        autoFocus
-        placeholder="Write the call update, reminder, or follow-up note..."
-        className="mt-2 w-full resize-none rounded-2xl border border-slate-300/70 bg-white/80 px-4 py-3 text-sm font-bold outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-      />
-      {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700">{error}</p>}
-      <div className="mt-5 flex justify-end gap-3">
-        <button type="button" onClick={onClose} className="rounded-xl border border-slate-300/70 bg-white px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-100">Cancel</button>
-        <button disabled={saving} className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-700/20 hover:bg-blue-800 disabled:opacity-50">
-          {saving ? 'Saving...' : 'Save Note'}
-        </button>
-      </div>
-    </form>
-  </div>
-}
-
-function NotesList({ activities }) {
-  const notes = activities.filter((activity) => activity.type === 'note')
-  if (!notes.length) return <Placeholder icon={MessageSquareText} title="No notes yet" />
-
-  return <div className="space-y-3">
-    {notes.map((note) => <article key={note._id} className="glass-panel rounded-2xl border p-4 shadow-glass">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase text-blue-700">{note.contactName}</p>
-          <h2 className="font-black text-slate-950">{note.title}</h2>
-        </div>
-        <p className="text-xs font-bold text-slate-500">{new Date(note.createdAt).toLocaleString()}</p>
-      </div>
-      <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-slate-700">{note.summary}</p>
-      <p className="mt-3 text-xs font-black uppercase text-slate-400">Added by {note.createdBy}</p>
-    </article>)}
-  </div>
-}
-
 function Dashboard({ user, onLogout }) {
   const { theme } = useTheme()
   const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState('Contacts')
   const [contacts, setContacts] = useState([])
   const [teachers, setTeachers] = useState([])
-  const [activities, setActivities] = useState([])
+  const [calls, setCalls] = useState([])
+  const [callSummary, setCallSummary] = useState({})
+  const [callsLoading, setCallsLoading] = useState(true)
   const [metrics, setMetrics] = useState({})
   const [query, setQuery] = useState('')
   const [showUpload, setShowUpload] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
-  const [noteContact, setNoteContact] = useState(null)
+  const [activeCall, setActiveCall] = useState(null)
+  const [callingId, setCallingId] = useState(null)
+  const [busyCallId, setBusyCallId] = useState(null)
 
   const loadContacts = async () => setContacts(await contactsApi.list())
-  const loadActivities = async () => setActivities(await activitiesApi.list())
+  const loadCalls = async () => {
+    const data = await callsApi.list()
+    setCalls(data.calls || [])
+    setCallSummary(data.summary || {})
+  }
   const loadAdmin = async () => {
     if (user.role !== 'admin') return
     const [metricData, teacherData] = await Promise.all([adminApi.metrics(), adminApi.teachers()])
@@ -259,7 +194,9 @@ function Dashboard({ user, onLogout }) {
   }
 
   useEffect(() => { loadContacts().catch(() => showToast('Could not load contacts')) }, [])
-  useEffect(() => { loadActivities().catch(() => showToast('Could not load notes')) }, [])
+  useEffect(() => {
+    loadCalls().catch(() => showToast('Could not load call history')).finally(() => setCallsLoading(false))
+  }, [])
   useEffect(() => { loadAdmin().catch(() => showToast('Could not load admin data')) }, [user.role])
 
   const visibleContacts = contacts.filter((contact) =>
@@ -279,15 +216,50 @@ function Dashboard({ user, onLogout }) {
     if (!window.confirm(`Delete teacher ${teacher.name}?`)) return
     await adminApi.deleteTeacher(teacher.id); await Promise.all([loadContacts(), loadAdmin()])
   }
-  async function saveNote(note) {
-    await activitiesApi.create({
-      type: 'note',
-      contactId: noteContact._id,
-      summary: note,
-    })
-    setNoteContact(null)
-    await loadActivities()
-    showToast('Note saved')
+
+  /** Pressing Call logs the attempt straight away, then opens the dialer. */
+  async function startCall(contact) {
+    setCallingId(contact._id)
+    try {
+      const call = await callsApi.start(contact._id)
+      await loadCalls()
+      setActiveCall(call)
+      showToast(`Calling ${call.studentName || contact.name}…`)
+
+      const number = (contact.phone || '').replace(/[^\d+]/g, '')
+      if (number) window.location.href = `tel:${number}`
+    } catch (error) {
+      showToast(error.response?.data?.message || 'Could not start the call')
+    } finally {
+      setCallingId(null)
+    }
+  }
+
+  /** Record whether the student attended, missed the call, etc. */
+  async function resolveCall(call, status, durationSeconds) {
+    setBusyCallId(call._id)
+    try {
+      const updated = await callsApi.setStatus(call._id, status, { durationSeconds })
+      await loadCalls()
+      showToast(status === 'attended' ? 'Call marked as attended' : `Call marked as ${status.replace('-', ' ')}`)
+      return updated
+    } finally {
+      setBusyCallId(null)
+    }
+  }
+
+  /** Notes always belong to a call, so they show up in that call's history. */
+  async function addCallNote(call, summary) {
+    await callsApi.addNote(call._id, summary)
+    await loadCalls()
+    showToast('Note added to call')
+  }
+
+  async function removeCall(call) {
+    if (!window.confirm(`Delete this call record for ${call.studentName || call.contactName}?`)) return
+    await callsApi.remove(call._id)
+    await loadCalls()
+    showToast('Call record deleted')
   }
 
   let content
@@ -297,25 +269,40 @@ function Dashboard({ user, onLogout }) {
       <IconButton onClick={() => setShowUpload(true)} className="bg-blue-700 text-white px-4"><Plus size={16} /> Add Student</IconButton>
     </div>
     <ContactsTable contacts={visibleContacts} user={user} teachers={teachers} onAssign={assign} onDelete={removeContact}
-      onCall={() => {}} onResolve={() => showToast('Marked resolved')} onAddNote={setNoteContact} />
+      onCall={startCall} callingId={callingId} />
   </>
   else if (activeTab === 'Upload') content = <StudentUpload user={user} onSuccess={() => { loadContacts(); showToast('Student added') }} />
   else if (activeTab === 'Settings' && user.role === 'admin') content = <AdminPanel metrics={metrics} teachers={teachers} onDeleteTeacher={removeTeacher} />
-  else if (activeTab === 'Notes') content = <NotesList activities={activities} />
-  else content = <Placeholder icon={activeTab === 'Calls' ? PhoneCall : activeTab === 'Notes' ? MessageSquareText : Settings} title={activeTab} />
+  else if (activeTab === 'Calls') content = <CallsSection calls={calls} summary={callSummary} user={user}
+    onSetStatus={resolveCall} onAddNote={addCallNote} onDelete={removeCall} busyId={busyCallId} loading={callsLoading} />
+  else content = <Placeholder icon={Settings} title={activeTab} />
+
+  const subtitle = {
+    Contacts: 'Call a student and the attempt is tracked automatically.',
+    Calls: 'Every call, its outcome and the notes recorded against it.',
+    Upload: 'Add students one at a time or import a CSV.',
+    Settings: 'Manage teacher accounts and review system metrics.',
+  }[activeTab]
 
   return <main data-theme={theme} className="app-shell min-h-screen text-slate-900 relative">
     <FloatingOrbs />
     <Header activeTab={activeTab} onTabChange={setActiveTab} user={user} onProfile={() => setShowProfile(true)} />
     <section className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-6 pb-28">
       <p className="text-xs font-black uppercase text-blue-700">{activeTab}</p>
-      <h1 className="mb-6 text-3xl font-black">{activeTab === 'Settings' && user.role === 'admin' ? 'Administration' : activeTab}</h1>
+      <h1 className="text-3xl font-black">{activeTab === 'Settings' && user.role === 'admin' ? 'Administration' : activeTab}</h1>
+      {subtitle && <p className="mb-6 mt-1 text-sm font-bold text-slate-500">{subtitle}</p>}
       {content}
     </section>
     <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     {showUpload && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/50 p-4"><StudentUpload user={user} onCancel={() => setShowUpload(false)} onSuccess={() => { setShowUpload(false); loadContacts(); loadAdmin() }} /></div>}
     {showProfile && <ProfilePanel user={user} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
-    {noteContact && <NoteModal contact={noteContact} onClose={() => setNoteContact(null)} onSave={saveNote} />}
+    {activeCall && <ActiveCallModal
+      call={activeCall}
+      onResolve={resolveCall}
+      onAddNote={addCallNote}
+      onClose={() => setActiveCall(null)}
+      onViewHistory={() => { setActiveCall(null); setActiveTab('Calls') }}
+    />}
   </main>
 }
 
