@@ -2,14 +2,17 @@ import express from 'express'
 import { Admin, authenticate, createSession, hashPassword, publicUser, User, verifyPassword } from '../auth.js'
 import { ADMIN_EMAIL, permissionsForRole } from '../rbac.js'
 import { verifyPersisted } from '../db.js'
+import { validateTeacherDateOfBirth } from '../services/ageValidation.js'
 
 const router = express.Router()
 
 router.post('/signup', async (req, res) => {
-  const { name, email, phone, age, password } = req.body
+  const { name, email, phone, dateOfBirth, password } = req.body
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !password || password.length < 6) {
     return res.status(400).json({ message: 'Name, email, phone and a 6+ character password are required' })
   }
+  const ageValidation = validateTeacherDateOfBirth(dateOfBirth)
+  if (!ageValidation.valid) return res.status(400).json({ message: ageValidation.message, field: 'dateOfBirth' })
   const normalizedEmail = email.trim().toLowerCase()
   if (normalizedEmail === ADMIN_EMAIL) {
     return res.status(403).json({ message: 'The administrator address cannot be registered publicly' })
@@ -28,7 +31,7 @@ router.post('/signup', async (req, res) => {
     name: name.trim(),
     email: normalizedEmail,
     phone: phone.trim(),
-    age,
+    dateOfBirth: ageValidation.date,
     password: hashPassword(password),
     role,
     permissions: permissionsForRole(role),

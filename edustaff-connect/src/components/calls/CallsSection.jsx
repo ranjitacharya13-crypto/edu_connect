@@ -82,7 +82,7 @@ function CallCard({ call, user, onSetStatus, onAddNote, onDelete, busyId }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-black text-slate-950">{call.studentName || call.contactName || 'Student'}</p>
+            <p className="break-words font-black text-slate-950">{call.studentName || call.contactName || 'Student'}</p>
             <StatusBadge status={call.status} />
           </div>
           <p className="mt-0.5 text-xs font-bold text-slate-500">
@@ -94,7 +94,7 @@ function CallCard({ call, user, onSetStatus, onAddNote, onDelete, busyId }) {
         </div>
 
         {/* Notes live with the call, so the toggle sits on the history row. */}
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
           <button
             onClick={() => setOpen(!open)}
             className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black transition ${
@@ -208,7 +208,7 @@ export default function CallsSection({ calls, summary, user, onSetStatus, onAddN
             {option.label}
           </button>
         ))}
-        <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
+          <span className="inline-flex w-full items-center gap-1.5 text-xs font-bold text-slate-500 sm:ml-auto sm:w-auto">
           <Clock3 size={14} />
           {formatDuration(summary.talkTimeSeconds ?? 0)} talk time
         </span>

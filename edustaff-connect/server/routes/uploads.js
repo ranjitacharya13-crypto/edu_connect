@@ -22,58 +22,129 @@ const upload = multer({
   },
 })
 
-// Required columns for CSV upload
-const REQUIRED_COLUMNS = [
-  'studentName',
-  'grade',
-  'guardianName',
-  'guardianPhone',
-]
+const REQUIRED_COLUMNS = ['Student Name', 'Admission Type', 'Department', 'Parent/Guardian Phone']
+const VALID_ADMISSION_TYPES = ['Regular', 'Lateral Entry', 'Part Time']
+const VALID_DEPARTMENTS = ['CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile']
+const PART_TIME_DEPARTMENTS = ['EEE', 'Mech']
+const HEADER_ALIASES = new Map([
+  ['student name', 'studentName'],
+  ['studentname', 'studentName'],
+  ['admission type', 'admissionType'],
+  ['admissiontype', 'admissionType'],
+  ['department', 'department'],
+  ['parent/guardian phone', 'guardianPhone'],
+  ['guardian phone', 'guardianPhone'],
+  ['guardianphone', 'guardianPhone'],
+  ['notes', 'notes'],
+])
 
-/**
- * Parse CSV data
- */
-function parseCSV(csvString) {
-  const lines = csvString.split(/\r?\n/).filter(line => line.trim())
-  if (lines.length < 2) {
-    throw new Error('CSV file must have at least a header and one data row')
-  }
+function normalizeHeader(header) {
+  return header.replace(/^\uFEFF/, '').trim().toLowerCase()
+}
 
-  const headers = lines[0].split(',').map(h => h.trim())
-  const data = []
-  const errors = []
+function departmentsForAdmissionType(admissionType) {
+  return admissionType === 'Part Time' ? PART_TIME_DEPARTMENTS : VALID_DEPARTMENTS
+}
 
-  // Check required columns
-  const missingColumns = REQUIRED_COLUMNS.filter(col => !headers.includes(col))
-  if (missingColumns.length > 0) {
-    throw new Error(`Missing required columns: ${missingColumns.join(', ')}`)
-  }
+function parseCsvRows(csvString) {
+  const rows = []
+  let row = []
+  let value = ''
+  let quoted = false
 
-  // Parse data rows
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim())
-    const row = {}
-    let rowValid = true
+  for (let i = 0; i < csvString.length; i += 1) {
+    const character = csvString[i]
+    const next = csvString[i + 1]
 
-    headers.forEach((header, index) => {
-      row[header] = values[index] || ''
-    })
-
-    // Validate required fields
-    REQUIRED_COLUMNS.forEach(col => {
-      if (!row[col]) {
-        rowValid = false
-        errors.push(`Row ${i + 1}: Missing ${col}`)
+    if (character === '"') {
+      if (quoted && next === '"') {
+        value += '"'
+        i += 1
+      } else {
+        quoted = !quoted
       }
-    })
-
-    if (rowValid) {
-      data.push(row)
+    } else if (character === ',' && !quoted) {
+      row.push(value.trim())
+      value = ''
+    } else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && next === '\n') i += 1
+      row.push(value.trim())
+      if (row.some((cell) => cell !== '')) rows.push(row)
+      row = []
+      value = ''
+    } else {
+      value += character
     }
   }
 
-  return { data, errors, totalRows: lines.length - 1 }
+  if (quoted) throw new Error('Malformed CSV: an opening quote is not closed')
+  if (value !== '' || row.length) {
+    row.push(value.trim())
+    if (row.some((cell) => cell !== '')) rows.push(row)
+  }
+  return rows
 }
+
+function parseCSV(csvString) {
+  const rows = parseCsvRows(csvString)
+  if (rows.length < 2) throw new Error('CSV file must have a header and at least one data row')
+
+  const sourceHeaders = rows[0].map((header) => header.replace(/^\uFEFF/, '').trim())
+  const normalizedHeaders = sourceHeaders.map(normalizeHeader)
+  const duplicateHeaders = normalizedHeaders.filter((header, index) => normalizedHeaders.indexOf(header) !== index)
+  if (duplicateHeaders.length) {
+    throw new Error(`Duplicate CSV headers: ${[...new Set(duplicateHeaders)].join(', ')}`)
+  }
+
+  const mappedHeaders = normalizedHeaders.map((header) => HEADER_ALIASES.get(header))
+  const duplicateMappedHeaders = mappedHeaders.filter((header, index) => header && mappedHeaders.indexOf(header) !== index)
+  if (duplicateMappedHeaders.length) {
+    throw new Error(`Duplicate CSV headers: ${[...new Set(duplicateMappedHeaders)].join(', ')}`)
+  }
+  const missingColumns = REQUIRED_COLUMNS.filter((column) => {
+    const alias = HEADER_ALIASES.get(normalizeHeader(column))
+    return !mappedHeaders.includes(alias)
+  })
+  if (missingColumns.length) throw new Error(`Missing required columns: ${missingColumns.join(', ')}`)
+
+  const data = []
+  const errors = []
+  for (let index = 1; index < rows.length; index += 1) {
+    const values = rows[index]
+    if (values.length > sourceHeaders.length) {
+      errors.push(`Row ${index + 1}: has more values than the header row`)
+      continue
+    }
+
+    const raw = {}
+    mappedHeaders.forEach((header, valueIndex) => {
+      if (header) raw[header] = values[valueIndex] || ''
+    })
+    const rowErrors = []
+    if (!raw.studentName) rowErrors.push('Student Name is required')
+    if (!VALID_ADMISSION_TYPES.includes(raw.admissionType)) rowErrors.push(`Admission Type is invalid: ${raw.admissionType || '(empty)'}`)
+    if (!departmentsForAdmissionType(raw.admissionType).includes(raw.department)) {
+      rowErrors.push(`Department is invalid for ${raw.admissionType || 'the selected Admission Type'}: ${raw.department || '(empty)'}`)
+    }
+    if (!raw.guardianPhone) rowErrors.push('Parent/Guardian Phone is required')
+
+    if (rowErrors.length) {
+      errors.push(`Row ${index + 1}: ${rowErrors.join('; ')}`)
+      continue
+    }
+    data.push({
+      studentName: raw.studentName,
+      admissionType: raw.admissionType,
+      department: raw.department,
+      guardianPhone: raw.guardianPhone,
+      notes: raw.notes || '',
+    })
+  }
+
+  return { data, errors, totalRows: rows.length - 1 }
+}
+
+export { parseCSV }
 
 /**
  * POST /api/uploads/manual - Manual student entry
@@ -82,19 +153,19 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
   try {
     const {
       studentName,
-      grade,
-      guardianName,
+      admissionType,
+      department,
       guardianPhone,
-      guardianEmail,
-      status,
       notes,
     } = req.body
 
     // Validate required fields
     const errors = []
     if (!studentName) errors.push('Student name is required')
-    if (!grade) errors.push('Grade is required')
-    if (!guardianName) errors.push('Guardian name is required')
+    if (!VALID_ADMISSION_TYPES.includes(admissionType)) errors.push('A valid admission type is required')
+    if (!departmentsForAdmissionType(admissionType).includes(department)) {
+      errors.push('Department is invalid for the selected admission type')
+    }
     if (!guardianPhone) errors.push('Guardian phone is required')
 
     if (errors.length > 0) {
@@ -102,19 +173,17 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
     }
 
     // Create contact
-    const adminFields = req.user.role === 'admin'
-      ? { email: guardianEmail || '', status: status || 'Primary Guardian', notes: notes || '' }
-      : {}
     const contact = await Contact.create({
-      name: guardianName,
+      name: studentName,
       phone: guardianPhone,
       student: {
         name: studentName,
-        grade,
+        admissionType,
+        department,
       },
       relationship: 'Guardian',
       createdBy: req.user._id,
-      ...adminFields,
+      notes: notes || '',
     })
     await verifyPersisted(Contact, contact._id, 'manual student contact')
 
@@ -179,14 +248,13 @@ router.post('/csv/import', requirePermission('canBulkUpload'), upload.single('fi
     for (const row of data) {
       try {
         const contact = await Contact.create({
-          name: row.guardianName,
+          name: row.studentName,
           phone: row.guardianPhone,
-          email: row.guardianEmail || '',
           student: {
             name: row.studentName,
-            grade: row.grade,
+            admissionType: row.admissionType,
+            department: row.department,
           },
-          status: row.status || 'Primary Guardian',
           notes: row.notes || '',
           relationship: 'Guardian',
           createdBy: req.user._id,

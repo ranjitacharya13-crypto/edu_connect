@@ -25,12 +25,16 @@ export const adminApi = {
   deleteTeacher: (id) => api.delete(`/admin/teachers/${id}`),
   assignContact: (contactId, teacherId) =>
     api.patch(`/admin/contacts/${contactId}/assignment`, { teacherId }).then((r) => r.data),
+  assignContacts: (contactIds, teacherId) =>
+    api.patch('/admin/contacts/bulk-assignment', { contactIds, teacherId }).then((r) => r.data),
 }
 
 // --- Contacts ---
 export const contactsApi = {
   list: (search) =>
-    api.get('/contacts', { params: { search } }).then((r) => r.data),
+    api.get('/contacts', { params: typeof search === 'object' ? search : { search } }).then((r) => r.data),
+
+  exportCsv: (params = {}) => api.get('/contacts/export', { params, responseType: 'blob' }).then((r) => r.data),
 
   create: (data) => api.post('/contacts', data).then((r) => r.data),
 
@@ -66,6 +70,13 @@ export const callsApi = {
     api.post(`/calls/${id}/notes`, { summary }).then((r) => r.data),
 
   remove: (id) => api.delete(`/calls/${id}`).then((r) => r.status === 204),
+}
+
+export const communicationsApi = {
+  history: (contactId) => api.get(`/communications/contact/${contactId}`).then((r) => r.data),
+  sendSms: (contactId, message, idempotencyKey) => api.post('/communications/sms', { contactId, message, idempotencyKey }).then((r) => r.data),
+  startCall: (contactId, idempotencyKey) => api.post('/communications/call', { contactId, idempotencyKey }).then((r) => r.data),
+  setCallOutcome: (id, outcome) => api.patch(`/communications/call/${id}`, { outcome }).then((r) => r.data),
 }
 
 export default api

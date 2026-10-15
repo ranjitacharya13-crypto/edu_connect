@@ -1,6 +1,18 @@
 import mongoose from 'mongoose'
 
-export const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/edustaff-connect'
+const {
+  MONGODB_URI: configuredMongoUri,
+  MONGODB_USERNAME,
+  MONGODB_PASSWORD,
+  MONGODB_CLUSTER,
+  MONGODB_DB_NAME,
+} = process.env
+
+export const MONGODB_URI = configuredMongoUri || (
+  MONGODB_USERNAME && MONGODB_PASSWORD && MONGODB_CLUSTER
+    ? `mongodb+srv://${encodeURIComponent(MONGODB_USERNAME)}:${encodeURIComponent(MONGODB_PASSWORD)}@${MONGODB_CLUSTER}/${MONGODB_DB_NAME || 'edustaff-connect'}?retryWrites=true&w=majority`
+    : 'mongodb://127.0.0.1:27017/edustaff-connect'
+)
 
 const options = {
   dbName: 'edustaff-connect',
@@ -12,18 +24,19 @@ const options = {
 
 let reconnectTimer
 let connecting
+let hasConnected = false
 
 export async function connectDatabase() {
   if (mongoose.connection.readyState === 1) return mongoose.connection
   if (connecting) return connecting
   connecting = mongoose.connect(MONGODB_URI, options)
     .then(() => {
+      hasConnected = true
       console.log(`MongoDB connected: ${mongoose.connection.name}`)
       return mongoose.connection
     })
     .catch((error) => {
       console.error('MongoDB connection failed:', error.message)
-      scheduleReconnect()
       throw error
     })
     .finally(() => { connecting = null })
@@ -43,6 +56,9 @@ function scheduleReconnect() {
 }
 
 mongoose.connection.on('disconnected', () => {
+  // The startup loop owns retries until the first successful connection.
+  // This prevents one failed startup attempt from creating two retry loops.
+  if (!hasConnected) return
   console.error('MongoDB disconnected; reconnect scheduled')
   scheduleReconnect()
 })

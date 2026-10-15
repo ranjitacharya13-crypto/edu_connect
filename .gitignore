@@ -1,0 +1,6 @@
+# Local/editor and generated files
+.qodo/
+edustaff-connect/.git-local-backup/
+edustaff-connect/.env
+edustaff-connect/node_modules/
+edustaff-connect/dist/

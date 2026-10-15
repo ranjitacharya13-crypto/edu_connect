@@ -1,5 +1,23 @@
 # React + Vite
 
+## SMS and communication history
+
+Contacts now support server-side SMS requests, native `tel:` dialing, and persistent communication history. SMS is intentionally disabled until an authorized provider is configured and the contact has an explicit `smsConsent.status` of `granted` (the API does not infer consent from a phone number).
+
+For Twilio, set these server-only variables in `.env`:
+
+```text
+SMS_PROVIDER=twilio
+TWILIO_ACCOUNT_SID=your-account-sid
+TWILIO_AUTH_TOKEN=your-auth-token
+SMS_SENDER_ID=your-approved-sender
+PUBLIC_WEBHOOK_URL=https://your-domain.example/api/communications/webhook/twilio
+```
+
+Configure the Twilio message-status callback to the public webhook URL. Twilio registration, sender approval, destination-country support, and any India-specific template/DLT requirements must be completed in the provider account. Never put these values in `VITE_*` variables or the browser bundle. Delivery is only shown after a verified callback; provider acceptance is not delivery proof.
+
+Relevant endpoints: `POST /api/communications/sms`, `POST /api/communications/call`, `PATCH /api/communications/call/:id`, `GET /api/communications/contact/:contactId`, and the authenticated-provider webhook at `POST /api/communications/webhook/twilio`.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:

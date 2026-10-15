@@ -1,4 +1,5 @@
 import express from 'express'
+import mongoose from 'mongoose'
 import { authenticate, requireAdmin, User } from '../auth.js'
 import Contact from '../models/Contact.js'
 import Session from '../models/Session.js'
@@ -34,6 +35,7 @@ router.delete('/teachers/:id', async (req, res) => {
 })
 
 router.patch('/contacts/:id/assignment', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'Invalid student ID' })
   const assignedTo = req.body.teacherId || null
   if (assignedTo && !(await User.exists({ _id: assignedTo, role: 'teacher' }))) {
     return res.status(400).json({ message: 'A valid teacher account is required' })
@@ -46,6 +48,16 @@ router.patch('/contacts/:id/assignment', async (req, res) => {
   if (!contact) return res.status(404).json({ message: 'Contact not found' })
   await verifyPersisted(Contact, contact._id, 'contact assignment')
   res.json(contact)
+})
+
+router.patch('/contacts/bulk-assignment', async (req, res) => {
+  const ids = [...new Set(Array.isArray(req.body.contactIds) ? req.body.contactIds.map(String) : [])]
+  const teacherId = req.body.teacherId || null
+  if (!ids.length) return res.status(400).json({ message: 'At least one student is required' })
+  if (ids.some((id) => !mongoose.isValidObjectId(id))) return res.status(400).json({ message: 'One or more student IDs are invalid' })
+  if (teacherId && (!mongoose.isValidObjectId(teacherId) || !(await User.exists({ _id: teacherId, role: 'teacher' })))) return res.status(400).json({ message: 'A valid teacher account is required' })
+  const result = await Contact.updateMany({ _id: { $in: ids } }, { $set: { assignedTo: teacherId } })
+  res.json({ requested: ids.length, matched: result.matchedCount ?? result.n, modified: result.modifiedCount ?? result.nModified })
 })
 
 export default router

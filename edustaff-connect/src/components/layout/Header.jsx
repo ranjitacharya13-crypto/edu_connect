@@ -30,7 +30,7 @@ export default function Header({ activeTab, onTabChange, user, onProfile }) {
           </div>
           <span className="text-lg sm:text-xl font-black text-slate-900 truncate">EduStaff</span>
         </div>
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {navItems.map(({ label }) => (
             <button
               key={label}

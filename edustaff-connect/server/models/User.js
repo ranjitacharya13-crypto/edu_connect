@@ -6,7 +6,9 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, trim: true, lowercase: true },
     phone: { type: String, trim: true },
+    // Kept optional for legacy records; dateOfBirth is authoritative for new signups.
     age: { type: Number },
+    dateOfBirth: { type: Date, default: null },
     password: { type: String, required: true, select: false },
     role: {
       type: String,

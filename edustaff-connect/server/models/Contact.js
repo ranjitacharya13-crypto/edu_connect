@@ -5,10 +5,25 @@ const contactSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     relationship: { type: String, default: 'Guardian' },
     phone: { type: String, trim: true },
+    smsConsent: {
+      status: { type: String, enum: ['unknown', 'granted', 'revoked'], default: 'unknown' },
+      source: { type: String, default: '' },
+      grantedAt: { type: Date, default: null },
+    },
     email: { type: String, trim: true, lowercase: true },
     student: {
       name: { type: String, required: true },
-      grade: { type: String, required: true },
+      grade: { type: String, default: '' },
+      admissionType: {
+        type: String,
+        enum: ['', 'Regular', 'Lateral Entry', 'Part Time'],
+        default: '',
+      },
+      department: {
+        type: String,
+        enum: ['', 'CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile'],
+        default: '',
+      },
     },
     status: {
       type: String,

@@ -1,18 +1,23 @@
 import { useEffect, useState } from 'react'
 import {
-  ArrowRight, BarChart3, Eye, EyeOff, GraduationCap, LogIn,
-  Plus, Search, Settings, Trash2, UserPlus,
+  ArrowRight, BarChart3, ChevronLeft, ChevronRight, Download, Eye, EyeOff, GraduationCap, LogIn,
+  Plus, Search, Settings, Trash2, UserPlus, UserRound,
 } from 'lucide-react'
 import { useTheme } from './context/ThemeContext'
 import { useToast } from './context/ToastContext'
 import Header from './components/layout/Header'
 import BottomNav from './components/layout/BottomNav'
 import ContactsTable from './components/contacts/ContactsTable'
+import ContactFilters from './components/contacts/ContactFilters'
 import CallsSection from './components/calls/CallsSection'
 import ActiveCallModal from './components/calls/ActiveCallModal'
 import IconButton from './components/ui/IconButton'
 import StudentUpload from './components/uploads/StudentUpload'
-import { adminApi, authApi, callsApi, contactsApi } from './services/api'
+import { activitiesApi, adminApi, authApi, callsApi, communicationsApi, contactsApi } from './services/api'
+import { MessageModal } from './components/contacts/CommunicationModal'
+import StudentDetailsModal from './components/contacts/StudentDetailsModal'
+import AssignmentModal from './components/contacts/AssignmentModal'
+import { validateTeacherDateOfBirth } from './services/ageValidation'
 
 function FloatingOrbs() {
   return <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
@@ -24,19 +29,25 @@ function FloatingOrbs() {
 function AuthPage({ onAuth }) {
   const [isSignUp, setIsSignUp] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [form, setForm] = useState({ name: '', age: '', email: '', phone: '', password: '' })
+  const [form, setForm] = useState({ name: '', dateOfBirth: '', email: '', phone: '', password: '' })
   const [error, setError] = useState('')
+  const [dateOfBirthError, setDateOfBirthError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
     setError('')
+    if (field === 'dateOfBirth') setDateOfBirthError('')
   }
 
   async function submit(event) {
     event.preventDefault()
     setLoading(true)
     setError('')
+    if (isSignUp) {
+      const dateError = validateTeacherDateOfBirth(form.dateOfBirth)
+      if (dateError) { setDateOfBirthError(dateError); setLoading(false); return }
+    }
     try {
       const result = isSignUp ? await authApi.signup(form) : await authApi.login(form)
       onAuth(result)
@@ -47,7 +58,7 @@ function AuthPage({ onAuth }) {
     }
   }
 
-  return <main className="app-shell min-h-screen flex items-center justify-center p-4 relative">
+  return <main className="app-shell min-h-[100dvh] flex items-center justify-center p-3 sm:p-4 relative">
     <FloatingOrbs />
     <div className="w-full max-w-md">
       <div className="text-center mb-8">
@@ -59,8 +70,8 @@ function AuthPage({ onAuth }) {
         <form onSubmit={submit} className="space-y-4">
           {isSignUp && <>
             <Field label="Full name" value={form.name} onChange={(v) => update('name', v)} required />
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Age" type="number" value={form.age} onChange={(v) => update('age', v)} />
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
+              <div><Field label="Date of birth" type="date" value={form.dateOfBirth} onChange={(v) => update('dateOfBirth', v)} required max={new Date().toISOString().slice(0, 10)} error={dateOfBirthError} /><p className="mt-1 text-[10px] font-bold text-slate-500">Teacher accounts require age 18 or older.</p></div>
               <Field label="Phone" value={form.phone} onChange={(v) => update('phone', v)} required />
             </div>
           </>}
@@ -92,11 +103,12 @@ function AuthPage({ onAuth }) {
   </main>
 }
 
-function Field({ label, value, onChange, type = 'text', required = false }) {
+function Field({ label, value, onChange, type = 'text', required = false, max, error }) {
   return <div>
     <label className="block text-[11px] font-black uppercase tracking-wider text-slate-600 mb-1">{label}</label>
-    <input type={type} value={value} onChange={(e) => onChange(e.target.value)} required={required}
-      className="w-full h-11 rounded-xl border border-slate-300/70 bg-white/65 px-4 outline-none text-sm font-bold" />
+    <input type={type} value={value} onChange={(e) => onChange(e.target.value)} required={required} max={max} aria-invalid={Boolean(error)} aria-describedby={error ? `${label.replace(/\s+/g, '-').toLowerCase()}-error` : undefined}
+      className={`w-full h-11 rounded-xl border ${error ? 'border-red-500' : 'border-slate-300/70'} bg-white/65 px-4 outline-none text-sm font-bold`} />
+    {error && <p id={`${label.replace(/\s+/g, '-').toLowerCase()}-error`} role="alert" className="mt-1 text-xs font-bold text-red-700">{error}</p>}
   </div>
 }
 
@@ -111,7 +123,7 @@ function ProfilePanel({ user, onClose, onLogout }) {
     canViewMetrics: 'View system metrics',
   }
   return <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-    <aside onClick={(e) => e.stopPropagation()} className="h-full w-full max-w-md overflow-y-auto bg-slate-50 p-6 shadow-2xl">
+    <aside onClick={(e) => e.stopPropagation()} className="h-full w-full max-w-md overflow-y-auto bg-slate-50 p-4 sm:p-6 shadow-2xl">
       <div className="flex items-start justify-between">
         <div><p className="text-xs font-black uppercase text-blue-700">Account details</p><h2 className="text-2xl font-black">{user.name}</h2></div>
         <button onClick={onClose} className="text-2xl">×</button>
@@ -147,9 +159,9 @@ function AdminPanel({ metrics, teachers, onDeleteTeacher }) {
     <div className="glass-panel rounded-3xl border p-5">
       <h2 className="text-xl font-black">Teacher accounts</h2>
       <div className="mt-4 space-y-3">
-        {teachers.map((teacher) => <div key={teacher.id} className="flex items-center justify-between rounded-xl border bg-white/65 p-3">
-          <div><p className="font-black">{teacher.name}</p><p className="text-xs text-slate-500">{teacher.email}</p></div>
-          <button onClick={() => onDeleteTeacher(teacher)} title="Delete teacher" className="rounded-lg bg-red-600 p-2 text-white"><Trash2 size={16} /></button>
+        {teachers.map((teacher) => <div key={teacher.id} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border bg-white/65 p-3">
+          <div className="min-w-0"><p className="truncate font-black">{teacher.name}</p><p className="truncate text-xs text-slate-500">{teacher.email}</p></div>
+          <button onClick={() => onDeleteTeacher(teacher)} title="Delete teacher" className="grid size-10 shrink-0 place-items-center rounded-lg bg-red-600 p-2 text-white"><Trash2 size={16} /></button>
         </div>)}
         {!teachers.length && <p className="text-sm text-slate-500">No teacher accounts yet.</p>}
       </div>
@@ -170,18 +182,38 @@ function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('Contacts')
   const [contacts, setContacts] = useState([])
   const [teachers, setTeachers] = useState([])
+  const [teachersLoading, setTeachersLoading] = useState(false)
+  const [teachersError, setTeachersError] = useState('')
   const [calls, setCalls] = useState([])
   const [callSummary, setCallSummary] = useState({})
   const [callsLoading, setCallsLoading] = useState(true)
   const [metrics, setMetrics] = useState({})
+  const [filters, setFilters] = useState({ search: '', admissionType: '', department: '', assignedTo: '', page: 1, pageSize: 20 })
   const [query, setQuery] = useState('')
+  const [totalContacts, setTotalContacts] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [contactsLoading, setContactsLoading] = useState(true)
+  const [contactsError, setContactsError] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
   const [showUpload, setShowUpload] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [activeCall, setActiveCall] = useState(null)
   const [callingId, setCallingId] = useState(null)
   const [busyCallId, setBusyCallId] = useState(null)
+  const [messageContact, setMessageContact] = useState(null)
+  const [history, setHistory] = useState([])
+  const [detailsContact, setDetailsContact] = useState(null)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsError, setDetailsError] = useState('')
+  const [showAssignment, setShowAssignment] = useState(false)
+  const [assignmentSaving, setAssignmentSaving] = useState(false)
 
-  const loadContacts = async () => setContacts(await contactsApi.list())
+  const loadContacts = async (params = filters) => {
+    setContactsLoading(true); setContactsError('')
+    try { const data = await contactsApi.list(params); setContacts(data.contacts || []); setTotalContacts(data.total || 0); setTotalPages(data.totalPages || 1) }
+    catch (error) { setContactsError(error.response?.data?.message || 'Could not load contacts'); throw error }
+    finally { setContactsLoading(false) }
+  }
   const loadCalls = async () => {
     const data = await callsApi.list()
     setCalls(data.calls || [])
@@ -189,8 +221,14 @@ function Dashboard({ user, onLogout }) {
   }
   const loadAdmin = async () => {
     if (user.role !== 'admin') return
-    const [metricData, teacherData] = await Promise.all([adminApi.metrics(), adminApi.teachers()])
-    setMetrics(metricData); setTeachers(teacherData)
+    setTeachersLoading(true); setTeachersError('')
+    try {
+      const [metricData, teacherData] = await Promise.all([adminApi.metrics(), adminApi.teachers()])
+      setMetrics(metricData); setTeachers(teacherData)
+    } catch (error) {
+      setTeachersError(error.response?.data?.message || 'Could not load teachers')
+      throw error
+    } finally { setTeachersLoading(false) }
   }
 
   useEffect(() => { loadContacts().catch(() => showToast('Could not load contacts')) }, [])
@@ -199,14 +237,25 @@ function Dashboard({ user, onLogout }) {
   }, [])
   useEffect(() => { loadAdmin().catch(() => showToast('Could not load admin data')) }, [user.role])
 
-  const visibleContacts = contacts.filter((contact) =>
-    `${contact.student?.name || ''} ${contact.student?.grade || ''}`.toLowerCase().includes(query.toLowerCase()))
-    .map((contact) => ({ ...contact, tone: 'blue' }))
+  const visibleContacts = contacts.filter((contact) => `${contact.student?.name || ''} ${contact.name || ''}`.toLowerCase().includes(query.toLowerCase())).map((contact) => ({ ...contact, tone: 'blue' }))
 
-  async function assign(contact, teacherId) {
+  function applyFilters(next) { const updated = { ...filters, ...next, page: 1 }; setFilters(updated); setSelectedIds(new Set()); loadContacts(updated).catch(() => showToast('Could not load contacts')) }
+  function goToPage(page) { const updated = { ...filters, page }; setFilters(updated); loadContacts(updated).catch(() => showToast('Could not load contacts')) }
+  function toggleSelected(id) { setSelectedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next }) }
+  function togglePage(checked) { setSelectedIds((current) => { const next = new Set(current); visibleContacts.forEach((contact) => checked ? next.add(String(contact._id)) : next.delete(String(contact._id))); return next }) }
+  function clearSelection() { setSelectedIds(new Set()) }
+  async function exportContacts(ids = []) { try { const blob = await contactsApi.exportCsv({ ...filters, ...(ids.length ? { ids: ids.join(',') } : {}) }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = ids.length ? 'educonnect-selected-students.csv' : 'educonnect-filtered-students.csv'; link.click(); URL.revokeObjectURL(url); showToast('Export downloaded') } catch (error) { showToast(error.response?.data?.message || 'Could not export students') } }
+
+  async function saveAssignment(contact, teacherId) {
     await adminApi.assignContact(contact._id, teacherId || null)
     await loadContacts()
+    if (detailsContact?._id === contact._id) setDetailsContact((current) => ({ ...current, assignedTo: teachers.find((teacher) => teacher.id === teacherId) || null }))
     showToast(teacherId ? 'Student assigned' : 'Student unassigned')
+  }
+  async function bulkAssign(teacherId) {
+    const result = await adminApi.assignContacts([...selectedIds], teacherId)
+    await loadContacts()
+    showToast(`${result.modified ?? result.matched} student${(result.modified ?? result.matched) === 1 ? '' : 's'} assigned`)
   }
   async function removeContact(contact) {
     if (!window.confirm(`Delete ${contact.student?.name}?`)) return
@@ -221,17 +270,49 @@ function Dashboard({ user, onLogout }) {
   async function startCall(contact) {
     setCallingId(contact._id)
     try {
+      const communication = await communicationsApi.startCall(contact._id)
       const call = await callsApi.start(contact._id)
       await loadCalls()
       setActiveCall(call)
       showToast(`Calling ${call.studentName || contact.name}…`)
 
-      const number = (contact.phone || '').replace(/[^\d+]/g, '')
+      const number = communication.dialNumber
       if (number) window.location.href = `tel:${number}`
     } catch (error) {
       showToast(error.response?.data?.message || 'Could not start the call')
     } finally {
       setCallingId(null)
+    }
+  }
+
+  async function openStudentDetails(contact) {
+    setDetailsContact(contact); setDetailsLoading(true); setDetailsError('')
+    try { setHistory(await communicationsApi.history(contact._id)) } catch (error) { setDetailsError(error.response?.data?.message || 'Could not load communication history') } finally { setDetailsLoading(false) }
+  }
+
+  async function addStudentNote(summary) {
+    await activitiesApi.create({ contactId: detailsContact._id, summary, type: 'note' })
+    setHistory(await communicationsApi.history(detailsContact._id))
+    showToast('Note saved')
+  }
+
+  async function sendMessage(message) {
+    const record = await communicationsApi.sendSms(messageContact._id, message, crypto.randomUUID())
+    showToast(record.status === 'queued' ? 'Message queued' : `Message ${record.status}`)
+  }
+
+  function openNativeMessage(contact) {
+    const number = (contact.phone || '').replace(/[\s().-]/g, '')
+    if (!/^\+?[1-9]\d{7,14}$/.test(number)) {
+      showToast('A valid guardian phone number is required')
+      return
+    }
+    try {
+      // This opens a compose screen only; the user still reviews and sends it.
+      // A regular web app cannot force Android to show a chooser.
+      window.location.assign(`sms:${encodeURI(number)}`)
+    } catch {
+      showToast('No compatible messaging app could be opened')
     }
   }
 
@@ -264,12 +345,15 @@ function Dashboard({ user, onLogout }) {
 
   let content
   if (activeTab === 'Contacts') content = <>
-    <div className="mb-6 flex gap-3">
-      <label className="flex flex-1 items-center gap-2 rounded-2xl border bg-white/65 px-4"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search students…" className="h-11 w-full bg-transparent outline-none font-bold" /></label>
-      <IconButton onClick={() => setShowUpload(true)} className="bg-blue-700 text-white px-4"><Plus size={16} /> Add Student</IconButton>
+    <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row">
+      <label className="flex min-w-0 w-full flex-1 items-center gap-2 rounded-2xl border bg-white/65 px-4"><Search size={18} className="shrink-0" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search students…" className="h-11 min-w-0 w-full bg-transparent outline-none font-bold" /></label>
+      <IconButton onClick={() => setShowUpload(true)} className="w-full shrink-0 bg-blue-700 text-white px-4 sm:w-auto"><Plus size={16} /> Add Student</IconButton>
     </div>
-    <ContactsTable contacts={visibleContacts} user={user} teachers={teachers} onAssign={assign} onDelete={removeContact}
-      onCall={startCall} callingId={callingId} />
+    <ContactFilters value={filters} teachers={teachers} isAdmin={user.role === 'admin'} total={totalContacts} onApply={applyFilters} />
+    {selectedIds.size > 0 && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3"><p className="mr-auto text-sm font-black text-blue-900">{selectedIds.size} students selected</p>{user.role === 'admin' && <button onClick={() => setShowAssignment(true)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-3 text-xs font-black text-white"><UserRound size={14} /> Assign Teacher</button>}<button onClick={() => exportContacts([...selectedIds])} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 text-xs font-black text-slate-700"><Download size={14} /> Export selected</button><button onClick={clearSelection} className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Clear selection</button></div>}
+    {contactsError && <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{contactsError}<button onClick={() => loadContacts().catch(() => {})} className="ml-3 underline">Retry</button></div>}
+    {contactsLoading ? <div className="glass-panel rounded-3xl border p-12 text-center text-sm font-bold text-slate-500">Loading students...</div> : <ContactsTable contacts={visibleContacts} selectedIds={selectedIds} onToggle={toggleSelected} onTogglePage={togglePage} user={user} onDelete={removeContact} onCall={startCall} onMessage={setMessageContact} onStudentDetails={openStudentDetails} callingId={callingId} />}
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><button onClick={() => exportContacts()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white/70 px-3 text-xs font-black text-slate-700"><Download size={14} /> Export filtered</button><div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-500">Page {filters.page} of {totalPages}</span><button disabled={filters.page <= 1} onClick={() => goToPage(filters.page - 1)} className="grid size-10 place-items-center rounded-xl border bg-white disabled:opacity-40" aria-label="Previous page"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => goToPage(filters.page + 1)} className="grid size-10 place-items-center rounded-xl border bg-white disabled:opacity-40" aria-label="Next page"><ChevronRight size={16} /></button></div></div>
   </>
   else if (activeTab === 'Upload') content = <StudentUpload user={user} onSuccess={() => { loadContacts(); showToast('Student added') }} />
   else if (activeTab === 'Settings' && user.role === 'admin') content = <AdminPanel metrics={metrics} teachers={teachers} onDeleteTeacher={removeTeacher} />
@@ -284,17 +368,17 @@ function Dashboard({ user, onLogout }) {
     Settings: 'Manage teacher accounts and review system metrics.',
   }[activeTab]
 
-  return <main data-theme={theme} className="app-shell min-h-screen text-slate-900 relative">
+  return <main data-theme={theme} className="app-shell min-h-[100dvh] min-w-0 overflow-x-hidden text-slate-900 relative">
     <FloatingOrbs />
     <Header activeTab={activeTab} onTabChange={setActiveTab} user={user} onProfile={() => setShowProfile(true)} />
-    <section className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-6 pb-28">
+    <section className="page-content mx-auto min-w-0 max-w-7xl px-3 py-5 sm:px-6 sm:py-6 lg:px-8">
       <p className="text-xs font-black uppercase text-blue-700">{activeTab}</p>
       <h1 className="text-3xl font-black">{activeTab === 'Settings' && user.role === 'admin' ? 'Administration' : activeTab}</h1>
       {subtitle && <p className="mb-6 mt-1 text-sm font-bold text-slate-500">{subtitle}</p>}
       {content}
     </section>
     <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-    {showUpload && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/50 p-4"><StudentUpload user={user} onCancel={() => setShowUpload(false)} onSuccess={() => { setShowUpload(false); loadContacts(); loadAdmin() }} /></div>}
+    {showUpload && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/50 p-2 sm:p-4"><StudentUpload user={user} onCancel={() => setShowUpload(false)} onSuccess={() => { setShowUpload(false); loadContacts(); loadAdmin() }} /></div>}
     {showProfile && <ProfilePanel user={user} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
     {activeCall && <ActiveCallModal
       call={activeCall}
@@ -303,6 +387,9 @@ function Dashboard({ user, onLogout }) {
       onClose={() => setActiveCall(null)}
       onViewHistory={() => { setActiveCall(null); setActiveTab('Calls') }}
     />}
+    {messageContact && <MessageModal contact={messageContact} onSend={sendMessage} onNativeMessage={openNativeMessage} onClose={() => setMessageContact(null)} />}
+    {detailsContact && <StudentDetailsModal contact={detailsContact} records={history} loading={detailsLoading} error={detailsError} onRetry={() => openStudentDetails(detailsContact)} onAddNote={addStudentNote} teachers={teachers} teachersLoading={teachersLoading} teachersError={teachersError} onRetryTeachers={() => loadAdmin().catch(() => {})} canAssign={user.role === 'admin'} assignmentSaving={assignmentSaving} onAssign={async (teacherId) => { setAssignmentSaving(true); try { await saveAssignment(detailsContact, teacherId) } finally { setAssignmentSaving(false) } }} onClose={() => setDetailsContact(null)} />}
+    {showAssignment && <AssignmentModal count={selectedIds.size} teachers={teachers} onConfirm={bulkAssign} onClose={() => setShowAssignment(false)} />}
   </main>
 }
 

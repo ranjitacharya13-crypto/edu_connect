@@ -60,17 +60,17 @@ export default function ActiveCallModal({ call, onResolve, onAddNote, onClose, o
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
-      <div onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-3xl border bg-slate-50 p-6 shadow-2xl">
+      <div onClick={(event) => event.stopPropagation()} className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-3xl border bg-slate-50 p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
             <div className={`grid size-12 place-items-center rounded-2xl ${resolved ? 'bg-emerald-600/15 text-emerald-700' : 'animate-pulse bg-blue-600/15 text-blue-700'}`}>
               <PhoneCall size={22} />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-black uppercase text-blue-700">
                 {resolved ? 'Call logged' : 'Call in progress'}
               </p>
-              <h2 className="text-xl font-black text-slate-950">{student}</h2>
+              <h2 className="break-words text-xl font-black text-slate-950">{student}</h2>
               <p className="text-xs font-bold text-slate-500">{call.phone || 'No phone on file'}</p>
             </div>
           </div>

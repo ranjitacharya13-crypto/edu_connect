@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Upload, UserPlus, FileText, AlertCircle, CheckCircle, X } from 'lucide-react'
 import api from '../../services/api'
 
-const STATUS_OPTIONS = [
-  'Primary Guardian',
-  'Medical Alert',
-  'New Admission',
-  'Absent Today',
-  'Inquiry',
-]
+const ADMISSION_TYPE_OPTIONS = ['Regular', 'Lateral Entry', 'Part Time']
+const ALL_DEPARTMENT_OPTIONS = ['CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile']
+const PART_TIME_DEPARTMENT_OPTIONS = ['EEE', 'Mech']
+
+function departmentsForAdmissionType(admissionType) {
+  if (!admissionType) return []
+  return admissionType === 'Part Time' ? PART_TIME_DEPARTMENT_OPTIONS : ALL_DEPARTMENT_OPTIONS
+}
 
 export default function StudentUpload({ onSuccess, onCancel, user }) {
   const [activeTab, setActiveTab] = useState('manual') // 'manual' or 'csv'
@@ -19,11 +20,9 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
   // Manual form state
   const [formData, setFormData] = useState({
     studentName: '',
-    grade: '',
-    guardianName: '',
+    admissionType: '',
+    department: '',
     guardianPhone: '',
-    guardianEmail: '',
-    status: 'Primary Guardian',
     notes: '',
   })
 
@@ -31,13 +30,19 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
   const [csvFile, setCsvFile] = useState(null)
   const [csvPreview, setCsvPreview] = useState(null)
   const [csvErrors, setCsvErrors] = useState([])
-  const isAdmin = user?.role === 'admin'
   const canBulkUpload = Boolean(user?.permissions?.canBulkUpload)
+  const departmentOptions = departmentsForAdmissionType(formData.admissionType)
 
   // Handle manual form input change
   const handleFormChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+      ...(name === 'admissionType' && !departmentsForAdmissionType(value).includes(prev.department)
+        ? { department: '' }
+        : {}),
+    }))
     if (errors.includes(name)) {
       setErrors(prev => prev.filter(err => err !== name))
     }
@@ -47,8 +52,8 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
   const validateManualForm = () => {
     const newErrors = []
     if (!formData.studentName.trim()) newErrors.push('studentName')
-    if (!formData.grade.trim()) newErrors.push('grade')
-    if (!formData.guardianName.trim()) newErrors.push('guardianName')
+    if (!ADMISSION_TYPE_OPTIONS.includes(formData.admissionType)) newErrors.push('admissionType')
+    if (!departmentsForAdmissionType(formData.admissionType).includes(formData.department)) newErrors.push('department')
     if (!formData.guardianPhone.trim()) newErrors.push('guardianPhone')
     setErrors(newErrors)
     return newErrors.length === 0
@@ -68,11 +73,9 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
       setSuccessMessage('Student added successfully!')
       setFormData({
         studentName: '',
-        grade: '',
-        guardianName: '',
+        admissionType: '',
+        department: '',
         guardianPhone: '',
-        guardianEmail: '',
-        status: 'Primary Guardian',
         notes: '',
       })
       if (onSuccess) onSuccess(response.data.contact)
@@ -131,9 +134,11 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
       const response = await api.post('/uploads/csv/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      const failedImports = response.data.failedImports || []
       setSuccessMessage(
-        `Successfully imported ${response.data.importedCount} students!`
+        `Imported ${response.data.importedCount} student${response.data.importedCount === 1 ? '' : 's'}${failedImports.length ? `; ${failedImports.length} failed` : ''}.`
       )
+      setCsvErrors(failedImports)
       if (onSuccess) onSuccess(null)
     } catch (error) {
       setCsvErrors([error.response?.data?.message || 'Failed to import CSV'])
@@ -143,9 +148,9 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
   }
 
   return (
-    <div className="glass-panel rounded-2xl border shadow-glass p-6 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-black text-slate-900">Student Upload</h2>
+    <div className="glass-panel mx-auto w-full max-w-4xl rounded-2xl border p-4 shadow-glass sm:p-6">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <h2 className="min-w-0 text-xl font-black text-slate-900 sm:text-2xl">Student Upload</h2>
         {onCancel && (
           <button onClick={onCancel} className="text-slate-500 hover:text-slate-700">
             <X size={24} />
@@ -162,7 +167,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-4 mb-6 border-b border-slate-200/70">
+      <div className="mb-6 flex flex-wrap gap-2 border-b border-slate-200/70 sm:gap-4">
         <button
           onClick={() => setActiveTab('manual')}
           className={`pb-3 px-2 font-bold transition ${
@@ -171,7 +176,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
               : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-h-11 items-center gap-2">
             <UserPlus size={18} />
             Manual Entry
           </div>
@@ -184,7 +189,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
               : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-h-11 items-center gap-2">
             <Upload size={18} />
             CSV Upload
           </div>
@@ -218,49 +223,55 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
 
             <div>
               <label className="block text-sm font-black text-slate-700 mb-1">
-                Grade *
+                Admission Type *
               </label>
-              <input
-                type="text"
-                name="grade"
-                value={formData.grade}
+              <select
+                name="admissionType"
+                value={formData.admissionType}
                 onChange={handleFormChange}
                 className={`w-full h-11 rounded-xl border px-4 bg-white/65 outline-none text-sm font-bold transition ${
-                  errors.includes('grade')
+                  errors.includes('admissionType')
                     ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
                     : 'border-slate-300/70 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                 }`}
-                placeholder="Grade 5"
-              />
-              {errors.includes('grade') && (
-                <p className="text-xs font-bold text-red-600 mt-1">Grade is required</p>
+              >
+                <option value="">Select Admission Type</option>
+                {ADMISSION_TYPE_OPTIONS.map((admissionType) => (
+                  <option key={admissionType} value={admissionType}>{admissionType}</option>
+                ))}
+              </select>
+              {errors.includes('admissionType') && (
+                <p className="text-xs font-bold text-red-600 mt-1">Admission type is required</p>
               )}
             </div>
 
             <div>
               <label className="block text-sm font-black text-slate-700 mb-1">
-                Guardian Name *
+                Department *
               </label>
-              <input
-                type="text"
-                name="guardianName"
-                value={formData.guardianName}
+              <select
+                name="department"
+                value={formData.department}
                 onChange={handleFormChange}
                 className={`w-full h-11 rounded-xl border px-4 bg-white/65 outline-none text-sm font-bold transition ${
-                  errors.includes('guardianName')
+                  errors.includes('department')
                     ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
                     : 'border-slate-300/70 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
                 }`}
-                placeholder="Jane Doe"
-              />
-              {errors.includes('guardianName') && (
-                <p className="text-xs font-bold text-red-600 mt-1">Guardian name is required</p>
+              >
+                <option value="">Select Department</option>
+                {departmentOptions.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
+              {errors.includes('department') && (
+                <p className="text-xs font-bold text-red-600 mt-1">Department is required</p>
               )}
             </div>
 
             <div>
               <label className="block text-sm font-black text-slate-700 mb-1">
-                Guardian Phone *
+                Parent/Guardian Phone *
               </label>
               <input
                 type="tel"
@@ -275,44 +286,12 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
                 placeholder="+1 555-123-4567"
               />
               {errors.includes('guardianPhone') && (
-                <p className="text-xs font-bold text-red-600 mt-1">Guardian phone is required</p>
+                <p className="text-xs font-bold text-red-600 mt-1">Parent/Guardian phone is required</p>
               )}
             </div>
-
-            {isAdmin && <div>
-              <label className="block text-sm font-black text-slate-700 mb-1">
-                Guardian Email
-              </label>
-              <input
-                type="email"
-                name="guardianEmail"
-                value={formData.guardianEmail}
-                onChange={handleFormChange}
-                className="w-full h-11 rounded-xl border border-slate-300/70 bg-white/65 px-4 outline-none text-sm font-bold transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                placeholder="jane@example.com"
-              />
-            </div>}
-
-            {isAdmin && <div>
-              <label className="block text-sm font-black text-slate-700 mb-1">
-                Status
-              </label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleFormChange}
-                className="w-full h-11 rounded-xl border border-slate-300/70 bg-white/65 px-4 outline-none text-sm font-bold transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-              >
-                {STATUS_OPTIONS.map(status => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </div>}
           </div>
 
-          {isAdmin && <div>
+          <div>
             <label className="block text-sm font-black text-slate-700 mb-1">
               Notes
             </label>
@@ -324,13 +303,13 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
               className="w-full rounded-xl border border-slate-300/70 bg-white/65 px-4 py-3 outline-none text-sm font-bold transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none"
               placeholder="Additional notes..."
             />
-          </div>}
+          </div>
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 flex items-center justify-center gap-2 min-h-11 rounded-xl px-4 font-black bg-blue-700 text-white shadow-lg shadow-blue-700/20 hover:bg-blue-800 transition-all disabled:opacity-50"
+              className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 font-black bg-blue-700 text-white shadow-lg shadow-blue-700/20 hover:bg-blue-800 transition-all disabled:opacity-50"
             >
               {loading ? 'Adding...' : 'Add Student'}
             </button>
@@ -338,7 +317,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
               <button
                 type="button"
                 onClick={onCancel}
-                className="min-h-11 rounded-xl px-6 font-bold text-slate-700 border border-slate-300/70 bg-white/65 hover:bg-white/80 transition"
+                className="min-h-11 rounded-xl px-6 font-bold text-slate-700 border border-slate-300/70 bg-white/65 hover:bg-white/80 transition sm:px-6"
               >
                 Cancel
               </button>
@@ -351,7 +330,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
       {activeTab === 'csv' && canBulkUpload && (
         <div className="space-y-4">
           {/* File Upload */}
-          <div className="border-2 border-dashed border-slate-300/70 rounded-2xl p-8 text-center bg-white/40">
+          <div className="border-2 border-dashed border-slate-300/70 rounded-2xl p-4 text-center bg-white/40 sm:p-8">
             {!csvFile ? (
               <>
                 <FileText size={48} className="mx-auto mb-4 text-slate-400" />
@@ -359,7 +338,9 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
                   Upload a CSV file
                 </p>
                 <p className="text-sm text-slate-500 mb-4">
-                  Required columns: studentName, grade, guardianName, guardianPhone
+                  Required columns: Student Name, Admission Type, Department, Parent/Guardian Phone, Notes
+                  <br />
+                  Admission Type: Regular, Lateral Entry, or Part Time. Part Time allows only EEE or Mech.
                 </p>
                 <label className="inline-flex items-center justify-center gap-2 min-h-11 rounded-xl px-6 font-black bg-blue-700 text-white shadow-lg shadow-blue-700/20 hover:bg-blue-800 transition-all cursor-pointer">
                   <Upload size={18} />
@@ -374,10 +355,10 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
               </>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-center gap-3">
+                <div className="flex flex-wrap items-center justify-center gap-3">
                   <FileText size={32} className="text-blue-700" />
-                  <div className="text-left">
-                    <p className="font-bold text-slate-900">{csvFile.name}</p>
+                  <div className="min-w-0 max-w-[calc(100%-5rem)] text-left">
+                    <p className="truncate font-bold text-slate-900">{csvFile.name}</p>
                     <p className="text-sm text-slate-500">
                       {(csvFile.size / 1024 / 1024).toFixed(2)} MB
                     </p>
@@ -405,7 +386,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
                 ) : (
                   <div className="space-y-4">
                     {/* Preview Stats */}
-                    <div className="flex gap-4 justify-center">
+                    <div className="grid grid-cols-2 gap-3 sm:flex sm:justify-center sm:gap-4">
                       <div className="text-center p-3 bg-slate-100 rounded-xl">
                         <p className="text-2xl font-black text-blue-700">
                           {csvPreview.totalRows}
@@ -475,7 +456,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
                     )}
 
                     {/* Import Button */}
-                    <div className="flex gap-3 justify-center pt-2">
+                    <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-center">
                       <button
                         onClick={() => {
                           setCsvFile(null)
@@ -489,7 +470,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
                       <button
                         onClick={handleCsvImport}
                         disabled={loading || csvPreview.validRows === 0}
-                        className="inline-flex items-center justify-center gap-2 min-h-11 rounded-xl px-6 font-black bg-green-700 text-white shadow-lg shadow-green-700/20 hover:bg-green-800 transition-all disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-6 font-black bg-green-700 text-white shadow-lg shadow-green-700/20 hover:bg-green-800 transition-all disabled:opacity-50"
                       >
                         {loading ? 'Importing...' : 'Import Students'}
                       </button>
@@ -519,11 +500,11 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
           <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200/70">
             <p className="font-black text-slate-700 mb-2">Sample CSV Format:</p>
             <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
-              studentName,grade,guardianName,guardianPhone,guardianEmail,status,notes
+              Student Name,Admission Type,Department,Parent/Guardian Phone,Notes
               <br />
-              "John Doe","Grade 5","Jane Doe","+1 555-123-4567","jane@example.com","Primary Guardian","Allergies to peanuts"
+              "Arun Kumar","Regular","CSE","9876543210","Sample record"
               <br />
-              "Alice Smith","Grade 3","Bob Smith","+1 555-987-6543","","New Admission",""
+              "Karthik Raj","Part Time","EEE","9988776655",""
             </pre>
           </div>
         </div>
