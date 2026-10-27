@@ -20,6 +20,31 @@ Relevant endpoints: `POST /api/communications/sms`, `POST /api/communications/ca
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
+## Database control center
+
+Administrators can open Settings → Database management after signing in with an administrator account. The page reads provider status from protected backend endpoints and supports checking or switching between Local MongoDB and MongoDB Atlas. The backend tests the target with a ping and only persists the provider/database selection after the new connection is verified.
+
+Configuration is server-only. Use the following variables in `.env`:
+
+```text
+DB_MODE=local|atlas
+MONGODB_DB_NAME=edustaff-connect
+MONGODB_LOCAL_URI=mongodb://127.0.0.1:27017/edustaff-connect
+MONGODB_ATLAS_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/edustaff-connect
+```
+
+`MONGODB_ATLAS_URI` takes precedence over the legacy `MONGODB_URI`. If `DB_MODE` is omitted, an explicitly configured local URI is selected only when no Atlas URI is configured; otherwise Atlas is selected. The database name is applied explicitly by Mongoose and the URI path is replaced with that validated name. An explicit `MONGODB_DB_NAME` that conflicts with the URI path is rejected at startup. The selected provider and database name are persisted in the ignored server-side `.runtime-db-config.json`; credentials are never stored there.
+
+Local setup detection is available from PowerShell with:
+
+```powershell
+npm.cmd run setup:local
+```
+
+The command detects an existing MongoDB Community Server installation and can start its existing Windows service. It does not download unverified installers, delete data, or run arbitrary commands. If MongoDB is missing, install MongoDB Community Server from the official distribution, then rerun the command. Local and Atlas databases remain isolated; switching does not copy, migrate, merge, or delete records.
+
+Protected database endpoints are available under `/api/admin/database`: `GET /status`, `GET /config`, `POST /test`, `POST /switch`, `POST /setup-local`, and `GET /local-detection`. They require an authenticated administrator session.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

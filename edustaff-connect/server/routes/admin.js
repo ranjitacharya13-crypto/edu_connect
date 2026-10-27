@@ -4,10 +4,59 @@ import { authenticate, requireAdmin, User } from '../auth.js'
 import Contact from '../models/Contact.js'
 import Session from '../models/Session.js'
 import { publicUser } from '../rbac.js'
-import { assertWriteAcknowledged, verifyPersisted } from '../db.js'
+import { assertWriteAcknowledged, databaseStatus, switchDatabase, testDatabaseConnection, verifyPersisted } from '../db.js'
+import { publicDatabaseConfig, resolveDatabaseConfig } from '../databaseConfig.js'
+import { inspectLocalMongo, setupLocalMongo } from '../services/localMongo.js'
 
 const router = express.Router()
 router.use(authenticate, requireAdmin)
+const operationTimes = new Map()
+
+function limitDatabaseOperation(kind, seconds) {
+  return (req, res, next) => {
+    const key = `${kind}:${req.ip}`
+    const elapsed = Date.now() - (operationTimes.get(key) || 0)
+    if (elapsed < seconds * 1000) return res.status(429).json({ code: 'DATABASE_RATE_LIMITED', message: `Please wait before trying another database ${kind}.` })
+    operationTimes.set(key, Date.now())
+    next()
+  }
+}
+
+router.get('/database/status', async (_req, res) => {
+  const status = databaseStatus()
+  status.localInstallation = await inspectLocalMongo()
+  if (status.providers?.local) status.providers.local.installation = status.localInstallation
+  return res.json(status)
+})
+
+router.get('/database/config', (_req, res) => {
+  try { return res.json(publicDatabaseConfig(resolveDatabaseConfig())) } catch (error) { return res.status(503).json({ code: error.code || 'DATABASE_CONFIG_ERROR', message: error.message }) }
+})
+
+router.post('/database/test', limitDatabaseOperation('test', 10), async (req, res) => {
+  try {
+    const result = await testDatabaseConnection({ provider: req.body?.provider, databaseName: req.body?.databaseName })
+    return res.json({ ...publicDatabaseConfig(result.config), connected: true, latencyMs: result.latencyMs })
+  } catch (error) {
+    return res.status(error.code === 'DATABASE_NOT_CONFIGURED' ? 422 : 503).json({ code: error.code || 'DATABASE_TEST_FAILED', message: error.message })
+  }
+})
+
+router.post('/database/switch', limitDatabaseOperation('switch', 15), async (req, res) => {
+  try {
+    const result = await switchDatabase({ provider: req.body?.provider, databaseName: req.body?.databaseName }, req.user.email || req.user.adminId)
+    return res.json(result)
+  } catch (error) {
+    return res.status(error.code === 'DATABASE_OPERATION_IN_PROGRESS' ? 409 : 503).json({ code: error.code || 'DATABASE_SWITCH_FAILED', message: error.message, status: databaseStatus() })
+  }
+})
+
+router.post('/database/setup-local', limitDatabaseOperation('setup', 30), async (_req, res) => {
+  const result = await setupLocalMongo()
+  return res.status(result.action === 'permission_required' ? 403 : 200).json(result)
+})
+
+router.get('/database/local-detection', async (_req, res) => res.json(await inspectLocalMongo()))
 
 router.get('/metrics', async (_req, res) => {
   const [teacherCount, contactCount] = await Promise.all([

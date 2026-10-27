@@ -12,6 +12,20 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Return to login when a protected request proves that the server-side
+// session is no longer valid. Login's own 401 is left for the form to handle.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || ''
+    if (error.response?.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/signup')) {
+      localStorage.removeItem('edustaff_token')
+      window.dispatchEvent(new Event('edustaff:session-expired'))
+    }
+    return Promise.reject(error)
+  },
+)
+
 export const authApi = {
   signup: (data) => api.post('/auth/signup', data).then((r) => r.data),
   login: (data) => api.post('/auth/login', data).then((r) => r.data),
@@ -22,6 +36,11 @@ export const authApi = {
 export const adminApi = {
   metrics: () => api.get('/admin/metrics').then((r) => r.data),
   teachers: () => api.get('/admin/teachers').then((r) => r.data),
+  databaseStatus: () => api.get('/admin/database/status').then((r) => r.data),
+  databaseTest: (provider, databaseName) => api.post('/admin/database/test', { provider, databaseName }).then((r) => r.data),
+  databaseSwitch: (provider, databaseName) => api.post('/admin/database/switch', { provider, databaseName }).then((r) => r.data),
+  setupLocalDatabase: () => api.post('/admin/database/setup-local').then((r) => r.data),
+  detectLocalDatabase: () => api.get('/admin/database/local-detection').then((r) => r.data),
   deleteTeacher: (id) => api.delete(`/admin/teachers/${id}`),
   assignContact: (contactId, teacherId) =>
     api.patch(`/admin/contacts/${contactId}/assignment`, { teacherId }).then((r) => r.data),

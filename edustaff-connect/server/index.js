@@ -8,7 +8,7 @@ import uploadsRouter from './routes/uploads.js'
 import authRouter from './routes/auth.js'
 import adminRouter from './routes/admin.js'
 import communicationsRouter from './routes/communications.js'
-import { connectDatabase, databaseStatus } from './db.js'
+import { connectDatabase, databaseStatus, refreshProviderHealth } from './db.js'
 import { migrateAccounts } from './migrate.js'
 
 const app = express()
@@ -41,6 +41,7 @@ async function start() {
     await migrateAccounts()
     app.listen(port, () => {
       console.log(`API listening on http://localhost:${port}`)
+      refreshProviderHealth().catch((error) => console.error('Provider health refresh failed:', error.message))
     })
   } catch (error) {
     console.error('MongoDB is not running or unreachable. Start MongoDB on localhost:27017, check the Atlas IP allowlist/credentials, or set MONGODB_URI in the .env file.')

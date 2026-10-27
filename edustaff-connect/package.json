@@ -7,6 +7,7 @@
     "dev": "concurrently \"npm:client\" \"npm:server\"",
     "client": "vite",
     "server": "nodemon server/index.js",
+    "setup:local": "node scripts/setup-local.mjs --start",
     "build": "vite build",
     "lint": "oxlint",
     "test": "node --test server/*.test.js server/routes/*.test.js server/services/*.test.js",

@@ -17,6 +17,7 @@ import { activitiesApi, adminApi, authApi, callsApi, communicationsApi, contacts
 import { MessageModal } from './components/contacts/CommunicationModal'
 import StudentDetailsModal from './components/contacts/StudentDetailsModal'
 import AssignmentModal from './components/contacts/AssignmentModal'
+import DatabaseManagement from './components/admin/DatabaseManagement'
 import { validateTeacherDateOfBirth } from './services/ageValidation'
 
 function FloatingOrbs() {
@@ -166,6 +167,7 @@ function AdminPanel({ metrics, teachers, onDeleteTeacher }) {
         {!teachers.length && <p className="text-sm text-slate-500">No teacher accounts yet.</p>}
       </div>
     </div>
+    <DatabaseManagement />
   </div>
 }
 
@@ -399,7 +401,17 @@ export default function App() {
 
   useEffect(() => {
     if (!checking) return
-    authApi.me().then(setUser).catch(() => localStorage.removeItem('edustaff_token')).finally(() => setChecking(false))
+    authApi.me().then(setUser).catch(() => { localStorage.removeItem('edustaff_token'); setUser(null) }).finally(() => setChecking(false))
+  }, [])
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      localStorage.removeItem('edustaff_token')
+      setUser(null)
+      setChecking(false)
+    }
+    window.addEventListener('edustaff:session-expired', handleSessionExpired)
+    return () => window.removeEventListener('edustaff:session-expired', handleSessionExpired)
   }, [])
 
   function authenticated({ token, user: account }) {
