@@ -3,6 +3,7 @@ import { Admin, authenticate, createSession, hashPassword, publicUser, User, ver
 import { ADMIN_EMAIL, permissionsForRole } from '../rbac.js'
 import { verifyPersisted } from '../db.js'
 import { validateTeacherDateOfBirth } from '../services/ageValidation.js'
+import { createTeacherAccount } from '../services/teacherAccounts.js'
 
 const router = express.Router()
 
@@ -21,21 +22,7 @@ router.post('/signup', async (req, res) => {
     return res.status(409).json({ message: 'An account with this email already exists' })
   }
 
-  const baseUsername = (req.body.username || normalizedEmail.split('@')[0]).trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')
-  let username = baseUsername || `teacher-${Date.now()}`
-  let suffix = 1
-  while (await User.exists({ username })) username = `${baseUsername}-${suffix++}`
-  const role = 'teacher'
-  const user = await User.create({
-    username,
-    name: name.trim(),
-    email: normalizedEmail,
-    phone: phone.trim(),
-    dateOfBirth: ageValidation.date,
-    password: hashPassword(password),
-    role,
-    permissions: permissionsForRole(role),
-  })
+  const user = await createTeacherAccount({ name, email: normalizedEmail, phone, dateOfBirth, password })
   await verifyPersisted(User, user._id, 'user account')
   const token = await createSession(user)
   res.status(201).json({ token, user: publicUser(user) })
@@ -72,3 +59,4 @@ router.post('/logout', authenticate, async (req, res) => {
 })
 
 export default router
+

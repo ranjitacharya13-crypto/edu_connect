@@ -35,6 +35,13 @@ app.use('/api/calls', callsRouter)
 app.use('/api/uploads', uploadsRouter)
 app.use('/api/communications', communicationsRouter)
 
+app.use((error, _req, res, _next) => {
+  if (error?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ message: 'CSV file exceeds the configured size limit' })
+  if (error?.message === 'Only CSV files are allowed' || error?.code === 'LIMIT_UNEXPECTED_FILE') return res.status(400).json({ message: 'Only CSV files are allowed' })
+  console.error('Unhandled request error:', error.message)
+  return res.status(500).json({ message: 'Request could not be completed' })
+})
+
 async function start() {
   try {
     await connectDatabase()
@@ -51,3 +58,4 @@ async function start() {
 }
 
 start()
+

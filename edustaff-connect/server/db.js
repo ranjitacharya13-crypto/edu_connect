@@ -11,6 +11,7 @@ let activeConfig
 let lastSuccessfulHealthCheck = null
 let lastOperation = { status: 'idle', completedAt: null, message: '' }
 const providerHealth = new Map()
+let activeOperations = 0
 
 function active() {
   if (!activeConfig) activeConfig = resolveDatabaseConfig()
@@ -20,6 +21,24 @@ function active() {
 const connectionOptions = (config) => ({ dbName: config.databaseName, serverSelectionTimeoutMS: 5000, heartbeatFrequencyMS: 5000, maxPoolSize: 10, retryWrites: true })
 
 export function currentDatabaseConfig() { return active() }
+
+export function beginDatabaseOperation(label = 'database operation') {
+  const config = active()
+  const status = databaseStatus()
+  if (!status.connected || mongoose.connection.readyState !== 1) {
+    const error = new Error(`Cannot start ${label}: the active database is unavailable.`)
+    error.code = 'DATABASE_UNAVAILABLE'
+    throw error
+  }
+  if (lastOperation.status !== 'idle' && lastOperation.status !== 'completed') {
+    const error = new Error(`Cannot start ${label}: a database switch is in progress.`)
+    error.code = 'DATABASE_OPERATION_IN_PROGRESS'
+    throw error
+  }
+  activeOperations += 1
+  let released = false
+  return { config, release() { if (!released) { released = true; activeOperations -= 1 } } }
+}
 
 export async function connectDatabase() {
   const config = active()
@@ -103,6 +122,11 @@ export async function switchDatabase(selection, actor = 'admin') {
 }
 
 async function performSwitch(selection, actor) {
+  if (activeOperations > 0) {
+    const error = new Error('A database import or write is in progress. Please wait before switching databases.')
+    error.code = 'DATABASE_OPERATION_IN_PROGRESS'
+    throw error
+  }
   const previous = active()
   const target = resolveDatabaseConfig(selection)
   if (previous.provider === target.provider && previous.databaseName === target.databaseName && databaseStatus().connected) {
@@ -149,3 +173,4 @@ export function assertWriteAcknowledged(result, label = 'database') {
   if (!result?.acknowledged) throw new Error(`${label} write was not acknowledged`)
   return result
 }
+

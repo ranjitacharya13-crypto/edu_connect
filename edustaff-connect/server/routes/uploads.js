@@ -3,7 +3,11 @@ import multer from 'multer'
 import Contact from '../models/Contact.js'
 import { authenticate, requirePermission } from '../auth.js'
 import { sanitizeContact } from '../rbac.js'
-import { verifyPersisted } from '../db.js'
+import { beginDatabaseOperation, verifyPersisted } from '../db.js'
+import { requireAdmin } from '../auth.js'
+import { createTeacherAccount, TEACHER_CSV_HEADERS } from '../services/teacherAccounts.js'
+import { parseTeacherCsv } from '../services/teacherCsv.js'
+import { canonicalAdmissionType, canonicalDepartment, departmentsForAdmissionType } from '../../shared/studentOptions.js'
 
 const router = express.Router()
 router.use(authenticate)
@@ -22,10 +26,13 @@ const upload = multer({
   },
 })
 
+const teacherUpload = multer({
+  storage,
+  limits: { fileSize: Number(process.env.TEACHER_IMPORT_MAX_BYTES || 10 * 1024 * 1024) },
+  fileFilter: (_req, file, cb) => cb(null, file.mimetype === 'text/csv' || file.originalname.toLowerCase().endsWith('.csv')),
+})
+
 const REQUIRED_COLUMNS = ['Student Name', 'Admission Type', 'Department', 'Parent/Guardian Phone']
-const VALID_ADMISSION_TYPES = ['Regular', 'Lateral Entry', 'Part Time']
-const VALID_DEPARTMENTS = ['CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile']
-const PART_TIME_DEPARTMENTS = ['EEE', 'Mech']
 const HEADER_ALIASES = new Map([
   ['student name', 'studentName'],
   ['studentname', 'studentName'],
@@ -40,10 +47,6 @@ const HEADER_ALIASES = new Map([
 
 function normalizeHeader(header) {
   return header.replace(/^\uFEFF/, '').trim().toLowerCase()
-}
-
-function departmentsForAdmissionType(admissionType) {
-  return admissionType === 'Part Time' ? PART_TIME_DEPARTMENTS : VALID_DEPARTMENTS
 }
 
 function parseCsvRows(csvString) {
@@ -121,10 +124,13 @@ function parseCSV(csvString) {
       if (header) raw[header] = values[valueIndex] || ''
     })
     const rowErrors = []
-    if (!raw.studentName) rowErrors.push('Student Name is required')
-    if (!VALID_ADMISSION_TYPES.includes(raw.admissionType)) rowErrors.push(`Admission Type is invalid: ${raw.admissionType || '(empty)'}`)
-    if (!departmentsForAdmissionType(raw.admissionType).includes(raw.department)) {
-      rowErrors.push(`Department is invalid for ${raw.admissionType || 'the selected Admission Type'}: ${raw.department || '(empty)'}`)
+    const admissionType = canonicalAdmissionType(raw.admissionType)
+    const department = canonicalDepartment(raw.department, admissionType)
+    if (!raw.studentName.trim()) rowErrors.push('Student Name is required')
+    if (!admissionType) rowErrors.push(`Admission Type is invalid: ${raw.admissionType || '(empty)'}`)
+    if (!department) {
+      const allowedDepartments = departmentsForAdmissionType(admissionType)
+      rowErrors.push(`Department is invalid for ${admissionType || raw.admissionType || 'the selected Admission Type'}: ${raw.department || '(empty)'}. Accepted values: ${allowedDepartments.join(', ') || 'none'}`)
     }
     if (!raw.guardianPhone) rowErrors.push('Parent/Guardian Phone is required')
 
@@ -134,8 +140,8 @@ function parseCSV(csvString) {
     }
     data.push({
       studentName: raw.studentName,
-      admissionType: raw.admissionType,
-      department: raw.department,
+      admissionType,
+      department,
       guardianPhone: raw.guardianPhone,
       notes: raw.notes || '',
     })
@@ -162,7 +168,7 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
     // Validate required fields
     const errors = []
     if (!studentName) errors.push('Student name is required')
-    if (!VALID_ADMISSION_TYPES.includes(admissionType)) errors.push('A valid admission type is required')
+    if (!canonicalAdmissionType(admissionType)) errors.push('A valid admission type is required')
     if (!departmentsForAdmissionType(admissionType).includes(department)) {
       errors.push('Department is invalid for the selected admission type')
     }
@@ -284,4 +290,45 @@ router.post('/csv/import', requirePermission('canBulkUpload'), upload.single('fi
   }
 })
 
+// Teacher provisioning is deliberately admin-only and uses the same account service as public signup.
+router.use('/teachers', requireAdmin)
+router.post('/teachers/manual', async (req, res) => {
+  let operation
+  try {
+    operation = beginDatabaseOperation('teacher account creation')
+    const user = await createTeacherAccount(req.body)
+    res.status(201).json({ success: true, user: { id: String(user._id), name: user.name, email: user.email, phone: user.phone, role: user.role } })
+  } catch (error) {
+    const status = error.code === 'DUPLICATE_ACCOUNT' ? 409 : error.code === 'VALIDATION_ERROR' ? 400 : 500
+    res.status(status).json({ message: status === 500 ? 'Teacher account could not be created' : error.message, fields: error.fields })
+  } finally { operation?.release() }
+})
+
+router.post('/teachers/csv/preview', teacherUpload.single('file'), (req, res) => {
+  let operation
+  try {
+    operation = beginDatabaseOperation('teacher CSV validation')
+    if (!req.file) return res.status(400).json({ message: 'A CSV file is required' })
+    const parsed = parseTeacherCsv(req.file.buffer)
+    res.json({ success: true, headers: TEACHER_CSV_HEADERS, totalRows: parsed.totalRows, validRows: parsed.records.length, errors: parsed.errors, preview: parsed.records.slice(0, 5).map(({ row, input }) => ({ row, 'Full Name': input.name, Email: input.email, Phone: input.phone, 'Date of Birth': input.dateOfBirth })) })
+  } catch (error) { res.status(error.code === 'DATABASE_UNAVAILABLE' || error.code === 'DATABASE_OPERATION_IN_PROGRESS' ? 503 : 400).json({ message: error.message }) } finally { operation?.release() }
+})
+
+router.post('/teachers/csv/import', teacherUpload.single('file'), async (req, res) => {
+  let operation
+  try {
+    operation = beginDatabaseOperation('teacher CSV import')
+    if (!req.file) return res.status(400).json({ message: 'A CSV file is required' })
+    const parsed = parseTeacherCsv(req.file.buffer)
+    const results = [...parsed.errors.map((error) => ({ ...error, status: 'failed' }))]
+    for (const record of parsed.records) {
+      try { await createTeacherAccount(record.input); results.push({ row: record.row, status: 'created' }) }
+      catch (error) { results.push({ row: record.row, status: error.code === 'DUPLICATE_ACCOUNT' ? 'skipped' : 'failed', message: error.code === 'DUPLICATE_ACCOUNT' ? 'An account with this email already exists' : 'Account could not be created' }) }
+    }
+    const counts = { created: results.filter((r) => r.status === 'created').length, failed: results.filter((r) => r.status === 'failed').length, skipped: results.filter((r) => r.status === 'skipped').length }
+    res.json({ success: true, totalRows: parsed.totalRows, ...counts, results })
+  } catch (error) { res.status(error.code === 'DATABASE_UNAVAILABLE' || error.code === 'DATABASE_OPERATION_IN_PROGRESS' ? 503 : 400).json({ message: error.message }) } finally { operation?.release() }
+})
+
 export default router
+

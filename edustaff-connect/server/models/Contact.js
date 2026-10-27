@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { STUDENT_ADMISSION_TYPES, STUDENT_DEPARTMENT_OPTIONS } from '../../shared/studentOptions.js'
 
 const contactSchema = new mongoose.Schema(
   {
@@ -16,12 +17,12 @@ const contactSchema = new mongoose.Schema(
       grade: { type: String, default: '' },
       admissionType: {
         type: String,
-        enum: ['', 'Regular', 'Lateral Entry', 'Part Time'],
+        enum: ['', ...STUDENT_ADMISSION_TYPES],
         default: '',
       },
       department: {
         type: String,
-        enum: ['', 'CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile'],
+        enum: ['', ...STUDENT_DEPARTMENT_OPTIONS],
         default: '',
       },
     },
@@ -39,3 +40,4 @@ const contactSchema = new mongoose.Schema(
 )
 
 export default mongoose.model('Contact', contactSchema)
+

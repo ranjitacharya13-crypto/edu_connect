@@ -48,6 +48,12 @@ export const adminApi = {
     api.patch('/admin/contacts/bulk-assignment', { contactIds, teacherId }).then((r) => r.data),
 }
 
+export const teacherUploadApi = {
+  create: (data) => api.post('/uploads/teachers/manual', data).then((r) => r.data),
+  preview: (file) => { const data = new FormData(); data.append('file', file); return api.post('/uploads/teachers/csv/preview', data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data) },
+  import: (file) => { const data = new FormData(); data.append('file', file); return api.post('/uploads/teachers/csv/import', data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data) },
+}
+
 // --- Contacts ---
 export const contactsApi = {
   list: (search) =>
@@ -99,3 +105,4 @@ export const communicationsApi = {
 }
 
 export default api
+

@@ -1,17 +1,19 @@
 import { useState } from 'react'
-import { Upload, UserPlus, FileText, AlertCircle, CheckCircle, X } from 'lucide-react'
+import { Upload, UserPlus, FileText, AlertCircle, CheckCircle, Download, X } from 'lucide-react'
 import api from '../../services/api'
+import TeacherUpload from './TeacherUpload'
+import { STUDENT_ADMISSION_TYPES as ADMISSION_TYPE_OPTIONS, departmentsForAdmissionType } from '../../../shared/studentOptions.js'
 
-const ADMISSION_TYPE_OPTIONS = ['Regular', 'Lateral Entry', 'Part Time']
-const ALL_DEPARTMENT_OPTIONS = ['CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile']
-const PART_TIME_DEPARTMENT_OPTIONS = ['EEE', 'Mech']
+const STUDENT_CSV_HEADERS = 'Student Name,Admission Type,Department,Parent/Guardian Phone,Notes'
 
-function departmentsForAdmissionType(admissionType) {
-  if (!admissionType) return []
-  return admissionType === 'Part Time' ? PART_TIME_DEPARTMENT_OPTIONS : ALL_DEPARTMENT_OPTIONS
+function downloadStudentTemplate() {
+  const csv = `${STUDENT_CSV_HEADERS}\n"Arun Kumar","Regular","CSE","9876543210","Sample record"\n"Karthik Raj","Part Time","EEE","9988776655","Sample record"\n`
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a'); link.href = url; link.download = 'educonnect-students-template.csv'; link.click(); URL.revokeObjectURL(url)
 }
 
 export default function StudentUpload({ onSuccess, onCancel, user }) {
+  const [accountType, setAccountType] = useState('student')
   const [activeTab, setActiveTab] = useState('manual') // 'manual' or 'csv'
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState([])
@@ -150,13 +152,17 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
   return (
     <div className="glass-panel mx-auto w-full max-w-4xl rounded-2xl border p-4 shadow-glass sm:p-6">
       <div className="mb-6 flex items-start justify-between gap-3">
-        <h2 className="min-w-0 text-xl font-black text-slate-900 sm:text-2xl">Student Upload</h2>
+        <h2 className="min-w-0 text-xl font-black text-slate-900 sm:text-2xl">{accountType === 'teacher' ? 'Teacher Upload' : 'Student Upload'}</h2>
         {onCancel && (
           <button onClick={onCancel} className="text-slate-500 hover:text-slate-700">
             <X size={24} />
           </button>
         )}
       </div>
+
+      {user?.role === 'admin' && <div className="mb-6 flex gap-2 rounded-xl bg-slate-100 p-1"><button onClick={() => setAccountType('student')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-black ${accountType === 'student' ? 'bg-white text-blue-700 shadow' : 'text-slate-500'}`}>Student Upload</button><button onClick={() => setAccountType('teacher')} className={`flex-1 rounded-lg px-3 py-2 text-sm font-black ${accountType === 'teacher' ? 'bg-white text-blue-700 shadow' : 'text-slate-500'}`}>Teacher Upload</button></div>}
+
+      {accountType === 'teacher' ? <TeacherUpload onSuccess={onSuccess} /> : <>
 
       {/* Success message */}
       {successMessage && (
@@ -341,6 +347,8 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
                   Required columns: Student Name, Admission Type, Department, Parent/Guardian Phone, Notes
                   <br />
                   Admission Type: Regular, Lateral Entry, or Part Time. Part Time allows only EEE or Mech.
+                  <br />
+                  Departments: CSE, Civil, AI/ML, Mech, ECE, EEE, or Automobile.
                 </p>
                 <label className="inline-flex items-center justify-center gap-2 min-h-11 rounded-xl px-6 font-black bg-blue-700 text-white shadow-lg shadow-blue-700/20 hover:bg-blue-800 transition-all cursor-pointer">
                   <Upload size={18} />
@@ -498,7 +506,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
 
           {/* Sample CSV Template */}
           <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200/70">
-            <p className="font-black text-slate-700 mb-2">Sample CSV Format:</p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="font-black text-slate-700">Sample CSV Format:</p><button type="button" onClick={downloadStudentTemplate} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700"><Download size={14} /> Download template</button></div>
             <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
               Student Name,Admission Type,Department,Parent/Guardian Phone,Notes
               <br />
@@ -509,6 +517,8 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }
+
