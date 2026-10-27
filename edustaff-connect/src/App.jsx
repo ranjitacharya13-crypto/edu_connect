@@ -90,7 +90,7 @@ function AuthPage({ onAuth }) {
           {error && <p className="rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700">{error}</p>}
           <button disabled={loading} className="inline-flex w-full items-center justify-center gap-2 min-h-12 rounded-xl px-4 font-black bg-blue-700 text-white disabled:opacity-50">
             {isSignUp ? <UserPlus size={18} /> : <LogIn size={18} />}
-            {loading ? 'Please wait…' : isSignUp ? 'Create Teacher Account' : 'Sign In'} <ArrowRight size={16} />
+            {loading ? 'Please waitâ€¦' : isSignUp ? 'Create Teacher Account' : 'Sign In'} <ArrowRight size={16} />
           </button>
         </form>
         <p className="mt-6 text-center text-xs font-bold text-slate-600">
@@ -127,7 +127,7 @@ function ProfilePanel({ user, onClose, onLogout }) {
     <aside onClick={(e) => e.stopPropagation()} className="h-full w-full max-w-md overflow-y-auto bg-slate-50 p-4 sm:p-6 shadow-2xl">
       <div className="flex items-start justify-between">
         <div><p className="text-xs font-black uppercase text-blue-700">Account details</p><h2 className="text-2xl font-black">{user.name}</h2></div>
-        <button onClick={onClose} className="text-2xl">×</button>
+        <button onClick={onClose} className="text-2xl">Ã—</button>
       </div>
       <div className="mt-6 space-y-4">
         <Info label="Account type" value={user.role === 'admin' ? 'Super Admin' : 'Teacher'} />
@@ -138,7 +138,7 @@ function ProfilePanel({ user, onClose, onLogout }) {
           <p className="text-xs font-black uppercase text-slate-500">Permissions</p>
           <ul className="mt-3 space-y-2 text-sm font-bold">
             {Object.entries(user.permissions || {}).filter(([, enabled]) => enabled).map(([key]) =>
-              <li key={key} className="flex gap-2"><span className="text-green-600">✓</span>{permissionLabels[key]}</li>)}
+              <li key={key} className="flex gap-2"><span className="text-green-600">âœ“</span>{permissionLabels[key]}</li>)}
           </ul>
         </div>
       </div>
@@ -154,8 +154,8 @@ function Info({ label, value }) {
 function AdminPanel({ metrics, teachers, onDeleteTeacher }) {
   return <div className="space-y-6">
     <div className="grid gap-4 sm:grid-cols-2">
-      <Metric label="Registered teachers" value={metrics.teacherCount ?? '—'} />
-      <Metric label="Student contacts" value={metrics.contactCount ?? '—'} />
+      <Metric label="Registered teachers" value={metrics.teacherCount ?? 'â€”'} />
+      <Metric label="Student contacts" value={metrics.contactCount ?? 'â€”'} />
     </div>
     <div className="glass-panel rounded-3xl border p-5">
       <h2 className="text-xl font-black">Teacher accounts</h2>
@@ -276,7 +276,7 @@ function Dashboard({ user, onLogout }) {
       const call = await callsApi.start(contact._id)
       await loadCalls()
       setActiveCall(call)
-      showToast(`Calling ${call.studentName || contact.name}…`)
+      showToast(`Calling ${call.studentName || contact.name}â€¦`)
 
       const number = communication.dialNumber
       if (number) window.location.href = `tel:${number}`
@@ -348,7 +348,7 @@ function Dashboard({ user, onLogout }) {
   let content
   if (activeTab === 'Contacts') content = <>
     <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row">
-      <label className="flex min-w-0 w-full flex-1 items-center gap-2 rounded-2xl border bg-white/65 px-4"><Search size={18} className="shrink-0" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search students…" className="h-11 min-w-0 w-full bg-transparent outline-none font-bold" /></label>
+      <label className="flex min-w-0 w-full flex-1 items-center gap-2 rounded-2xl border bg-white/65 px-4"><Search size={18} className="shrink-0" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search studentsâ€¦" className="h-11 min-w-0 w-full bg-transparent outline-none font-bold" /></label>
       <IconButton onClick={() => setShowUpload(true)} className="w-full shrink-0 bg-blue-700 text-white px-4 sm:w-auto"><Plus size={16} /> Add Student</IconButton>
     </div>
     <ContactFilters value={filters} teachers={teachers} isAdmin={user.role === 'admin'} total={totalContacts} onApply={applyFilters} />
@@ -357,7 +357,7 @@ function Dashboard({ user, onLogout }) {
     {contactsLoading ? <div className="glass-panel rounded-3xl border p-12 text-center text-sm font-bold text-slate-500">Loading students...</div> : <ContactsTable contacts={visibleContacts} selectedIds={selectedIds} onToggle={toggleSelected} onTogglePage={togglePage} user={user} onDelete={removeContact} onCall={startCall} onMessage={setMessageContact} onStudentDetails={openStudentDetails} callingId={callingId} />}
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><button onClick={() => exportContacts()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white/70 px-3 text-xs font-black text-slate-700"><Download size={14} /> Export filtered</button><div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-500">Page {filters.page} of {totalPages}</span><button disabled={filters.page <= 1} onClick={() => goToPage(filters.page - 1)} className="grid size-10 place-items-center rounded-xl border bg-white disabled:opacity-40" aria-label="Previous page"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => goToPage(filters.page + 1)} className="grid size-10 place-items-center rounded-xl border bg-white disabled:opacity-40" aria-label="Next page"><ChevronRight size={16} /></button></div></div>
   </>
-  else if (activeTab === 'Upload') content = <StudentUpload user={user} onSuccess={() => { loadContacts(); showToast('Student added') }} />
+  else if (activeTab === 'Upload') content = <StudentUpload user={user} onSuccess={(kind) => { if (kind === 'teacher') { loadAdmin().catch(() => {}); showToast('Teacher accounts updated') } else { loadContacts(); showToast('Student added') } }} />
   else if (activeTab === 'Settings' && user.role === 'admin') content = <AdminPanel metrics={metrics} teachers={teachers} onDeleteTeacher={removeTeacher} />
   else if (activeTab === 'Calls') content = <CallsSection calls={calls} summary={callSummary} user={user}
     onSetStatus={resolveCall} onAddNote={addCallNote} onDelete={removeCall} busyId={busyCallId} loading={callsLoading} />
@@ -380,7 +380,7 @@ function Dashboard({ user, onLogout }) {
       {content}
     </section>
     <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-    {showUpload && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/50 p-2 sm:p-4"><StudentUpload user={user} onCancel={() => setShowUpload(false)} onSuccess={() => { setShowUpload(false); loadContacts(); loadAdmin() }} /></div>}
+    {showUpload && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/50 p-2 sm:p-4"><StudentUpload user={user} onCancel={() => setShowUpload(false)} onSuccess={(kind) => { setShowUpload(false); if (kind === 'teacher') loadAdmin().catch(() => {}); else loadContacts(); }} /></div>}
     {showProfile && <ProfilePanel user={user} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
     {activeCall && <ActiveCallModal
       call={activeCall}
@@ -423,6 +423,7 @@ export default function App() {
     localStorage.removeItem('edustaff_token'); setUser(null)
   }
 
-  if (checking) return <div className="app-shell min-h-screen grid place-items-center font-black">Loading account…</div>
+  if (checking) return <div className="app-shell min-h-screen grid place-items-center font-black">Loading accountâ€¦</div>
   return user ? <Dashboard user={user} onLogout={logout} /> : <AuthPage onAuth={authenticated} />
 }
+
