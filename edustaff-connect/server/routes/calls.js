@@ -154,8 +154,12 @@ router.get('/:id/notes', async (req, res) => {
  */
 router.post('/:id/notes', async (req, res) => {
   const summary = req.body.summary?.trim()
+  const interest = req.body.interest || ''
   if (!summary) {
     return res.status(400).json({ message: 'Note text is required' })
+  }
+  if (!['', 'interested', 'not_interested'].includes(interest)) {
+    return res.status(400).json({ message: 'Interest must be interested or not_interested' })
   }
 
   const access = await callAccessQuery(req, req.params.id)
@@ -170,6 +174,7 @@ router.post('/:id/notes', async (req, res) => {
     title: `Note for ${contactName}`,
     contactName,
     summary,
+    interest,
     outcome: call.status,
     priority: req.body.priority || 'normal',
     createdBy: req.user.name || req.user.email,
@@ -182,6 +187,25 @@ router.post('/:id/notes', async (req, res) => {
   await Call.findByIdAndUpdate(call._id, { $set: { notesCount } })
 
   res.status(201).json(note)
+})
+
+/** PATCH /api/calls/:id/notes/:noteId - classify a call note's interest. */
+router.patch('/:id/notes/:noteId', async (req, res) => {
+  const { interest } = req.body
+  if (!['interested', 'not_interested'].includes(interest)) {
+    return res.status(400).json({ message: 'Interest must be interested or not_interested' })
+  }
+  const access = await callAccessQuery(req, req.params.id)
+  const call = await Call.findOne(access)
+  if (!call) return res.status(404).json({ message: 'Call not found' })
+  const note = await Activity.findOneAndUpdate(
+    { _id: req.params.noteId, call: call._id, type: 'note' },
+    { $set: { interest } },
+    { new: true, runValidators: true },
+  )
+  if (!note) return res.status(404).json({ message: 'Call note not found' })
+  await verifyPersisted(Activity, note._id, 'call note update')
+  res.json(note)
 })
 
 /**

@@ -27,7 +27,10 @@ router.get('/', async (req, res) => {
 })
 
 router.post('/', async (req, res) => {
-  const { contactId, callId = null, summary, type = 'note', outcome = '', priority = 'normal' } = req.body
+  const { contactId, callId = null, summary, type = 'note', outcome = '', interest = '', priority = 'normal' } = req.body
+  if (!['', 'interested', 'not_interested'].includes(interest)) {
+    return res.status(400).json({ message: 'Invalid note category' })
+  }
   if (!summary?.trim()) {
     return res.status(400).json({ message: 'Note text is required' })
   }
@@ -46,6 +49,7 @@ router.post('/', async (req, res) => {
     contactName,
     summary: summary.trim(),
     outcome,
+    interest,
     priority,
     createdBy: req.user.name || req.user.email,
     createdByAccount: req.user._id,

@@ -1,0 +1,6 @@
+{
+  "appId": "com.educonnect.edustaff",
+  "appName": "EduConnect",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

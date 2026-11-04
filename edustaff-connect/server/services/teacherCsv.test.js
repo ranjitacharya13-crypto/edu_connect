@@ -24,4 +24,3 @@ test('teacher CSV validates rows and detects duplicate emails', () => {
   assert.equal(result.errors.length, 1)
   assert.match(result.errors[0].message, /Duplicate email/)
 })
-

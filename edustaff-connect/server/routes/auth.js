@@ -1,20 +1,21 @@
 import express from 'express'
 import { Admin, authenticate, createSession, hashPassword, publicUser, User, verifyPassword } from '../auth.js'
 import { ADMIN_EMAIL, permissionsForRole } from '../rbac.js'
-import { verifyPersisted } from '../db.js'
+import { isDatabaseUnavailable, verifyPersisted } from '../db.js'
 import { validateTeacherDateOfBirth } from '../services/ageValidation.js'
 import { createTeacherAccount } from '../services/teacherAccounts.js'
 
 const router = express.Router()
 
 router.post('/signup', async (req, res) => {
-  const { name, email, phone, dateOfBirth, password } = req.body
-  if (!name?.trim() || !email?.trim() || !phone?.trim() || !password || password.length < 6) {
+  const { name, phone, dateOfBirth, password } = req.body || {}
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+  if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(email) || !phone?.trim() || !password || password.length < 6) {
     return res.status(400).json({ message: 'Name, email, phone and a 6+ character password are required' })
   }
   const ageValidation = validateTeacherDateOfBirth(dateOfBirth)
   if (!ageValidation.valid) return res.status(400).json({ message: ageValidation.message, field: 'dateOfBirth' })
-  const normalizedEmail = email.trim().toLowerCase()
+  const normalizedEmail = email
   if (normalizedEmail === ADMIN_EMAIL) {
     return res.status(403).json({ message: 'The administrator address cannot be registered publicly' })
   }
@@ -29,21 +30,38 @@ router.post('/signup', async (req, res) => {
 })
 
 router.post('/login', async (req, res) => {
-  const email = req.body.email?.trim().toLowerCase()
-  const admin = await Admin.findOne({ email }).select('+credentialHash')
-  const user = admin || await User.findOne({ email }).select('+password')
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+  const password = typeof req.body?.password === 'string' ? req.body.password : ''
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' })
+  }
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ message: 'A valid email is required' })
+  }
+
+  let admin
+  let user
+  try {
+    admin = await Admin.findOne({ email }).select('+credentialHash')
+    user = admin || await User.findOne({ email }).select('+password')
+  } catch (error) {
+    if (!isDatabaseUnavailable(error)) throw error
+    console.error('Authentication database unavailable:', { name: error.name, code: error.code })
+    return res.status(503).json({ message: 'Authentication service is temporarily unavailable' })
+  }
+
   const storedCredential = admin?.credentialHash || user?.password
-  if (!user || !verifyPassword(req.body.password || '', storedCredential)) {
+  if (!user || !verifyPassword(password, storedCredential)) {
     return res.status(401).json({ message: 'Invalid email or password' })
   }
   if (admin) {
     user.lastLoginAt = new Date()
     user.permissions = permissionsForRole('admin')
-    if (!user.credentialHash.includes(':')) user.credentialHash = hashPassword(req.body.password)
+    if (!user.credentialHash.includes(':')) user.credentialHash = hashPassword(password)
   } else {
     user.role = 'teacher'
     user.permissions = permissionsForRole('teacher')
-    if (!user.password.includes(':')) user.password = hashPassword(req.body.password)
+    if (!user.password.includes(':')) user.password = hashPassword(password)
   }
   await user.save()
   await verifyPersisted(admin ? Admin : User, user._id, 'account login update')
@@ -59,4 +77,3 @@ router.post('/logout', authenticate, async (req, res) => {
 })
 
 export default router
-

@@ -14,6 +14,7 @@ const activitySchema = new mongoose.Schema(
     contactName: { type: String, required: true },
     summary: { type: String, required: true },
     outcome: { type: String, default: '' },
+    interest: { type: String, enum: ['', 'interested', 'not_interested'], default: '' },
     priority: { type: String, enum: ['low', 'normal', 'high', 'critical'], default: 'normal' },
     createdBy: { type: String, default: 'Admin' },
     createdByAccount: { type: mongoose.Schema.Types.ObjectId, default: null },

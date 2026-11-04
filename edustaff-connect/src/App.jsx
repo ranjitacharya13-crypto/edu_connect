@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowRight, BarChart3, ChevronLeft, ChevronRight, Download, Eye, EyeOff, GraduationCap, LogIn,
   Plus, Search, Settings, Trash2, UserPlus, UserRound,
@@ -13,11 +14,13 @@ import CallsSection from './components/calls/CallsSection'
 import ActiveCallModal from './components/calls/ActiveCallModal'
 import IconButton from './components/ui/IconButton'
 import StudentUpload from './components/uploads/StudentUpload'
-import { activitiesApi, adminApi, authApi, callsApi, communicationsApi, contactsApi } from './services/api'
+import { activitiesApi, adminApi, authApi, callsApi, communicationsApi, contactsApi, customFieldsApi } from './services/api'
+import { authenticationErrorMessage } from './services/authErrors'
 import { MessageModal } from './components/contacts/CommunicationModal'
 import StudentDetailsModal from './components/contacts/StudentDetailsModal'
 import AssignmentModal from './components/contacts/AssignmentModal'
 import DatabaseManagement from './components/admin/DatabaseManagement'
+import CustomFieldManager from './components/contacts/CustomFieldManager'
 import { validateTeacherDateOfBirth } from './services/ageValidation'
 
 function FloatingOrbs() {
@@ -25,6 +28,47 @@ function FloatingOrbs() {
     <div className="orb orb-1" /><div className="orb orb-2" />
     <div className="orb orb-3" /><div className="orb orb-4" />
   </div>
+}
+
+const androidApkUrl = import.meta.env.VITE_ANDROID_APK_URL || '/downloads/educonnect.apk'
+const androidApkManifestUrl = `${androidApkUrl}.json`
+const isAndroidMobileBrowser = typeof navigator !== 'undefined'
+
+  && /Android/i.test(navigator.userAgent)
+  && /Mobile/i.test(navigator.userAgent)
+
+function DownloadAndroidApp() {
+  const [status, setStatus] = useState('checking')
+
+  useEffect(() => {
+    if (!isAndroidMobileBrowser) return undefined
+    const controller = new AbortController()
+    fetch(androidApkManifestUrl, { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) {
+          setStatus('unavailable')
+          return
+        }
+        const manifest = await response.json()
+        setStatus(manifest.available === true ? 'available' : 'unavailable')
+      })
+      .catch(() => setStatus('unavailable'))
+    return () => controller.abort()
+  }, [])
+
+  if (!isAndroidMobileBrowser) return null
+
+  const available = status === 'available'
+  return <section className="mb-6 rounded-3xl border border-blue-200/70 bg-blue-50/80 p-4 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5 sm:p-5">
+    <div className="min-w-0">
+      <p className="text-xs font-black uppercase tracking-wider text-blue-700">EduConnect for Android</p>
+      <h2 className="mt-1 text-lg font-black text-slate-900">Use EduConnect as an app</h2>
+      <p className="mt-1 text-sm font-bold text-slate-600">Install the Android app for quick access to your online workspace.</p>
+    </div>
+    {available ? <a href={androidApkUrl} download="educonnect.apk" className="mt-4 inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-black text-white shadow-lg shadow-blue-700/20 transition hover:bg-blue-800 sm:mt-0">
+      <Download size={18} /> Download Android App
+    </a> : <p className="mt-4 shrink-0 text-xs font-black text-slate-500 sm:mt-0">Android download is being prepared.</p>}
+  </section>
 }
 
 function AuthPage({ onAuth }) {
@@ -43,6 +87,7 @@ function AuthPage({ onAuth }) {
 
   async function submit(event) {
     event.preventDefault()
+    if (loading) return
     setLoading(true)
     setError('')
     if (isSignUp) {
@@ -53,7 +98,7 @@ function AuthPage({ onAuth }) {
       const result = isSignUp ? await authApi.signup(form) : await authApi.login(form)
       onAuth(result)
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Unable to authenticate')
+      setError(authenticationErrorMessage(requestError))
     } finally {
       setLoading(false)
     }
@@ -67,6 +112,7 @@ function AuthPage({ onAuth }) {
         <h1 className="text-3xl font-black text-slate-950">EduStaff</h1>
         <p className="text-sm text-slate-600 font-bold mt-1">{isSignUp ? 'Create your teacher account' : 'Sign in to your workspace'}</p>
       </div>
+      <DownloadAndroidApp />
       <div className="glass-panel rounded-3xl border shadow-glass p-6 sm:p-8">
         <form onSubmit={submit} className="space-y-4">
           {isSignUp && <>
@@ -90,7 +136,7 @@ function AuthPage({ onAuth }) {
           {error && <p className="rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700">{error}</p>}
           <button disabled={loading} className="inline-flex w-full items-center justify-center gap-2 min-h-12 rounded-xl px-4 font-black bg-blue-700 text-white disabled:opacity-50">
             {isSignUp ? <UserPlus size={18} /> : <LogIn size={18} />}
-            {loading ? 'Please waitâ€¦' : isSignUp ? 'Create Teacher Account' : 'Sign In'} <ArrowRight size={16} />
+            {loading ? 'Please wait…' : isSignUp ? 'Create Teacher Account' : 'Sign In'} <ArrowRight size={16} />
           </button>
         </form>
         <p className="mt-6 text-center text-xs font-bold text-slate-600">
@@ -127,7 +173,7 @@ function ProfilePanel({ user, onClose, onLogout }) {
     <aside onClick={(e) => e.stopPropagation()} className="h-full w-full max-w-md overflow-y-auto bg-slate-50 p-4 sm:p-6 shadow-2xl">
       <div className="flex items-start justify-between">
         <div><p className="text-xs font-black uppercase text-blue-700">Account details</p><h2 className="text-2xl font-black">{user.name}</h2></div>
-        <button onClick={onClose} className="text-2xl">Ã—</button>
+        <button onClick={onClose} className="text-2xl">×</button>
       </div>
       <div className="mt-6 space-y-4">
         <Info label="Account type" value={user.role === 'admin' ? 'Super Admin' : 'Teacher'} />
@@ -138,7 +184,7 @@ function ProfilePanel({ user, onClose, onLogout }) {
           <p className="text-xs font-black uppercase text-slate-500">Permissions</p>
           <ul className="mt-3 space-y-2 text-sm font-bold">
             {Object.entries(user.permissions || {}).filter(([, enabled]) => enabled).map(([key]) =>
-              <li key={key} className="flex gap-2"><span className="text-green-600">âœ“</span>{permissionLabels[key]}</li>)}
+              <li key={key} className="flex gap-2"><span className="text-green-600">✓</span>{permissionLabels[key]}</li>)}
           </ul>
         </div>
       </div>
@@ -154,8 +200,8 @@ function Info({ label, value }) {
 function AdminPanel({ metrics, teachers, onDeleteTeacher }) {
   return <div className="space-y-6">
     <div className="grid gap-4 sm:grid-cols-2">
-      <Metric label="Registered teachers" value={metrics.teacherCount ?? 'â€”'} />
-      <Metric label="Student contacts" value={metrics.contactCount ?? 'â€”'} />
+      <Metric label="Registered teachers" value={metrics.teacherCount ?? '—'} />
+      <Metric label="Student contacts" value={metrics.contactCount ?? '—'} />
     </div>
     <div className="glass-panel rounded-3xl border p-5">
       <h2 className="text-xl font-black">Teacher accounts</h2>
@@ -209,11 +255,27 @@ function Dashboard({ user, onLogout }) {
   const [detailsError, setDetailsError] = useState('')
   const [showAssignment, setShowAssignment] = useState(false)
   const [assignmentSaving, setAssignmentSaving] = useState(false)
+  const [customFields, setCustomFields] = useState([])
+  const [showCustomFields, setShowCustomFields] = useState(false)
+
+  useEffect(() => {
+    if (!showUpload) return undefined
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setShowUpload(false)
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showUpload])
 
   const loadContacts = async (params = filters) => {
     setContactsLoading(true); setContactsError('')
     try { const data = await contactsApi.list(params); setContacts(data.contacts || []); setTotalContacts(data.total || 0); setTotalPages(data.totalPages || 1) }
-    catch (error) { setContactsError(error.response?.data?.message || 'Could not load contacts'); throw error }
+    catch (error) { setContactsError(error.response?.data?.message || error.message || 'Could not load contacts'); throw error }
     finally { setContactsLoading(false) }
   }
   const loadCalls = async () => {
@@ -238,6 +300,19 @@ function Dashboard({ user, onLogout }) {
     loadCalls().catch(() => showToast('Could not load call history')).finally(() => setCallsLoading(false))
   }, [])
   useEffect(() => { loadAdmin().catch(() => showToast('Could not load admin data')) }, [user.role])
+  useEffect(() => { customFieldsApi.list(user.role === 'admin').then(setCustomFields).catch(() => showToast('Could not load student columns')) }, [user.role])
+
+  async function saveCustomField(id, data) {
+    const current = customFields.find((field) => field._id === id)
+    const saved = id
+      ? current?.state === 'archived' && data.state === 'active'
+        ? await customFieldsApi.restore(id)
+        : await customFieldsApi.update(id, data)
+      : await customFieldsApi.create(data)
+    setCustomFields((current) => id ? current.map((field) => field._id === id ? saved : field) : [...current, saved])
+    await loadContacts()
+    showToast(id ? 'Student column updated' : 'Student column created')
+  }
 
   const visibleContacts = contacts.filter((contact) => `${contact.student?.name || ''} ${contact.name || ''}`.toLowerCase().includes(query.toLowerCase())).map((contact) => ({ ...contact, tone: 'blue' }))
 
@@ -276,7 +351,7 @@ function Dashboard({ user, onLogout }) {
       const call = await callsApi.start(contact._id)
       await loadCalls()
       setActiveCall(call)
-      showToast(`Calling ${call.studentName || contact.name}â€¦`)
+      showToast(`Calling ${call.studentName || contact.name}…`)
 
       const number = communication.dialNumber
       if (number) window.location.href = `tel:${number}`
@@ -292,8 +367,8 @@ function Dashboard({ user, onLogout }) {
     try { setHistory(await communicationsApi.history(contact._id)) } catch (error) { setDetailsError(error.response?.data?.message || 'Could not load communication history') } finally { setDetailsLoading(false) }
   }
 
-  async function addStudentNote(summary) {
-    await activitiesApi.create({ contactId: detailsContact._id, summary, type: 'note' })
+  async function addStudentNote(summary, interest = '') {
+    await activitiesApi.create({ contactId: detailsContact._id, summary, interest, type: 'note' })
     setHistory(await communicationsApi.history(detailsContact._id))
     showToast('Note saved')
   }
@@ -332,10 +407,21 @@ function Dashboard({ user, onLogout }) {
   }
 
   /** Notes always belong to a call, so they show up in that call's history. */
-  async function addCallNote(call, summary) {
-    await callsApi.addNote(call._id, summary)
+  async function addCallNote(call, summary, interest) {
+    await callsApi.addNote(call._id, summary, interest)
     await loadCalls()
     showToast('Note added to call')
+  }
+
+  async function setCallNoteInterest(call, note, interest) {
+    setBusyCallId(call._id)
+    try {
+      await callsApi.setNoteInterest(call._id, note._id, interest)
+      await loadCalls()
+      showToast(`Note marked ${interest === 'interested' ? 'Interested' : 'Not interested'}`)
+    } finally {
+      setBusyCallId(null)
+    }
   }
 
   async function removeCall(call) {
@@ -348,19 +434,19 @@ function Dashboard({ user, onLogout }) {
   let content
   if (activeTab === 'Contacts') content = <>
     <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row">
-      <label className="flex min-w-0 w-full flex-1 items-center gap-2 rounded-2xl border bg-white/65 px-4"><Search size={18} className="shrink-0" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search studentsâ€¦" className="h-11 min-w-0 w-full bg-transparent outline-none font-bold" /></label>
+      <label className="flex min-w-0 w-full flex-1 items-center gap-2 rounded-2xl border bg-white/65 px-4"><Search size={18} className="shrink-0" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search students…" className="h-11 min-w-0 w-full bg-transparent outline-none font-bold" /></label>
       <IconButton onClick={() => setShowUpload(true)} className="w-full shrink-0 bg-blue-700 text-white px-4 sm:w-auto"><Plus size={16} /> Add Student</IconButton>
     </div>
-    <ContactFilters value={filters} teachers={teachers} isAdmin={user.role === 'admin'} total={totalContacts} onApply={applyFilters} />
+    <ContactFilters value={filters} fields={customFields} teachers={teachers} isAdmin={user.role === 'admin'} total={totalContacts} onApply={applyFilters} />
     {selectedIds.size > 0 && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3"><p className="mr-auto text-sm font-black text-blue-900">{selectedIds.size} students selected</p>{user.role === 'admin' && <button onClick={() => setShowAssignment(true)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-3 text-xs font-black text-white"><UserRound size={14} /> Assign Teacher</button>}<button onClick={() => exportContacts([...selectedIds])} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 text-xs font-black text-slate-700"><Download size={14} /> Export selected</button><button onClick={clearSelection} className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Clear selection</button></div>}
     {contactsError && <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{contactsError}<button onClick={() => loadContacts().catch(() => {})} className="ml-3 underline">Retry</button></div>}
-    {contactsLoading ? <div className="glass-panel rounded-3xl border p-12 text-center text-sm font-bold text-slate-500">Loading students...</div> : <ContactsTable contacts={visibleContacts} selectedIds={selectedIds} onToggle={toggleSelected} onTogglePage={togglePage} user={user} onDelete={removeContact} onCall={startCall} onMessage={setMessageContact} onStudentDetails={openStudentDetails} callingId={callingId} />}
+    {contactsLoading ? <div className="glass-panel rounded-3xl border p-12 text-center text-sm font-bold text-slate-500">Loading students...</div> : <ContactsTable contacts={visibleContacts} fields={customFields} selectedIds={selectedIds} onToggle={toggleSelected} onTogglePage={togglePage} user={user} onDelete={removeContact} onCall={startCall} onMessage={setMessageContact} onStudentDetails={openStudentDetails} callingId={callingId} onManageFields={() => setShowCustomFields(true)} />}
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><button onClick={() => exportContacts()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white/70 px-3 text-xs font-black text-slate-700"><Download size={14} /> Export filtered</button><div className="flex items-center gap-2"><span className="text-xs font-bold text-slate-500">Page {filters.page} of {totalPages}</span><button disabled={filters.page <= 1} onClick={() => goToPage(filters.page - 1)} className="grid size-10 place-items-center rounded-xl border bg-white disabled:opacity-40" aria-label="Previous page"><ChevronLeft size={16} /></button><button disabled={filters.page >= totalPages} onClick={() => goToPage(filters.page + 1)} className="grid size-10 place-items-center rounded-xl border bg-white disabled:opacity-40" aria-label="Next page"><ChevronRight size={16} /></button></div></div>
   </>
-  else if (activeTab === 'Upload') content = <StudentUpload user={user} onSuccess={(kind) => { if (kind === 'teacher') { loadAdmin().catch(() => {}); showToast('Teacher accounts updated') } else { loadContacts(); showToast('Student added') } }} />
+  else if (activeTab === 'Upload') content = <StudentUpload user={user} customFields={customFields} onSuccess={(kind) => { if (kind === 'teacher') { loadAdmin().catch(() => {}); showToast('Teacher accounts updated') } else { loadContacts(); showToast('Student added') } }} />
   else if (activeTab === 'Settings' && user.role === 'admin') content = <AdminPanel metrics={metrics} teachers={teachers} onDeleteTeacher={removeTeacher} />
   else if (activeTab === 'Calls') content = <CallsSection calls={calls} summary={callSummary} user={user}
-    onSetStatus={resolveCall} onAddNote={addCallNote} onDelete={removeCall} busyId={busyCallId} loading={callsLoading} />
+    onSetStatus={resolveCall} onAddNote={addCallNote} onSetNoteInterest={setCallNoteInterest} onDelete={removeCall} busyId={busyCallId} loading={callsLoading} />
   else content = <Placeholder icon={Settings} title={activeTab} />
 
   const subtitle = {
@@ -380,7 +466,9 @@ function Dashboard({ user, onLogout }) {
       {content}
     </section>
     <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-    {showUpload && <div className="fixed inset-0 z-40 overflow-y-auto bg-black/50 p-2 sm:p-4"><StudentUpload user={user} onCancel={() => setShowUpload(false)} onSuccess={(kind) => { setShowUpload(false); if (kind === 'teacher') loadAdmin().catch(() => {}); else loadContacts(); }} /></div>}
+    {showUpload && createPortal(<div className="student-upload-overlay fixed inset-0 z-[45] flex items-start justify-center overflow-y-auto bg-slate-950/55 p-3 sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowUpload(false) }}>
+      <StudentUpload isModal user={user} customFields={customFields} onCancel={() => setShowUpload(false)} onSuccess={(kind) => { setShowUpload(false); if (kind === 'teacher') loadAdmin().catch(() => {}); else loadContacts(); }} />
+    </div>, document.body)}
     {showProfile && <ProfilePanel user={user} onClose={() => setShowProfile(false)} onLogout={onLogout} />}
     {activeCall && <ActiveCallModal
       call={activeCall}
@@ -392,6 +480,7 @@ function Dashboard({ user, onLogout }) {
     {messageContact && <MessageModal contact={messageContact} onSend={sendMessage} onNativeMessage={openNativeMessage} onClose={() => setMessageContact(null)} />}
     {detailsContact && <StudentDetailsModal contact={detailsContact} records={history} loading={detailsLoading} error={detailsError} onRetry={() => openStudentDetails(detailsContact)} onAddNote={addStudentNote} teachers={teachers} teachersLoading={teachersLoading} teachersError={teachersError} onRetryTeachers={() => loadAdmin().catch(() => {})} canAssign={user.role === 'admin'} assignmentSaving={assignmentSaving} onAssign={async (teacherId) => { setAssignmentSaving(true); try { await saveAssignment(detailsContact, teacherId) } finally { setAssignmentSaving(false) } }} onClose={() => setDetailsContact(null)} />}
     {showAssignment && <AssignmentModal count={selectedIds.size} teachers={teachers} onConfirm={bulkAssign} onClose={() => setShowAssignment(false)} />}
+    {showCustomFields && <CustomFieldManager fields={customFields} onSave={saveCustomField} onClose={() => setShowCustomFields(false)} />}
   </main>
 }
 
@@ -423,7 +512,6 @@ export default function App() {
     localStorage.removeItem('edustaff_token'); setUser(null)
   }
 
-  if (checking) return <div className="app-shell min-h-screen grid place-items-center font-black">Loading accountâ€¦</div>
+  if (checking) return <div className="app-shell min-h-screen grid place-items-center font-black">Loading account…</div>
   return user ? <Dashboard user={user} onLogout={logout} /> : <AuthPage onAuth={authenticated} />
 }
-

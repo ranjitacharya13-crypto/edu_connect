@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 const initial = { search: '', admissionType: '', department: '', assignedTo: '' }
 const departments = ['CSE', 'Civil', 'AI/ML', 'Mech', 'ECE', 'EEE', 'Automobile']
 
-export default function ContactFilters({ value = initial, teachers = [], isAdmin, total, onApply }) {
+export default function ContactFilters({ value = initial, teachers = [], isAdmin, total, onApply, fields = [] }) {
   const [draft, setDraft] = useState({ ...initial, ...value })
   const departmentOptions = draft.admissionType === 'Part Time' ? ['EEE', 'Mech'] : departments
   useEffect(() => setDraft({ ...initial, ...value }), [value])
@@ -21,6 +21,14 @@ export default function ContactFilters({ value = initial, teachers = [], isAdmin
       <Select label="Admission type" value={draft.admissionType} onChange={updateAdmissionType} options={['Regular', 'Lateral Entry', 'Part Time'].map((item) => [item, item])} />
       <Select label="Department" value={draft.department} onChange={(value) => update('department', value)} options={departmentOptions.map((item) => [item, item])} />
       {isAdmin && <Select label="Assigned teacher" value={draft.assignedTo} onChange={(value) => update('assignedTo', value)} options={teachers.map((teacher) => [teacher.id, teacher.name])} />}
+      {fields.filter((field) => field.filterable && field.state === 'active').map((field) => {
+        const key = `customField_${field.key}`
+        const value = draft[key] ?? ''
+        if (['select', 'multi_select'].includes(field.type)) return <Select key={field.key} label={field.label} value={value} onChange={(next) => update(key, next)} options={(field.options || []).map((option) => [option.value, option.label])} />
+        if (field.type === 'boolean') return <Select key={field.key} label={field.label} value={value} onChange={(next) => update(key, next)} options={[['true', 'Yes'], ['false', 'No']]} />
+        const type = ['number', 'date', 'email'].includes(field.type) ? field.type : 'text'
+        return <label key={field.key} className="flex min-w-0 flex-col gap-1"><span className="px-1 text-[10px] font-black uppercase tracking-wide text-slate-500">{field.label}</span><input type={type} value={value} onChange={(event) => update(key, event.target.value)} className="h-10 min-w-0 rounded-xl border border-slate-300/70 bg-white/65 px-3 text-xs font-bold outline-none focus:border-blue-500" /></label>
+      })}
     </div>
     <button className="mt-3 min-h-10 rounded-xl bg-blue-700 px-4 text-xs font-black text-white shadow-md hover:bg-blue-800">Apply filters</button>
   </form>

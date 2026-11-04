@@ -47,6 +47,8 @@ export function publicUser(user) {
 
 export function sanitizeContact(contact, role) {
   const value = contact.toObject ? contact.toObject() : { ...contact }
+  if (value.customFields instanceof Map) value.customFields = Object.fromEntries(value.customFields)
+  else if (value.customFields?.toObject) value.customFields = value.customFields.toObject()
   if (role !== 'admin') {
     delete value.email
     delete value.status

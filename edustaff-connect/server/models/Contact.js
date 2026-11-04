@@ -32,6 +32,7 @@ const contactSchema = new mongoose.Schema(
       default: 'Primary Guardian',
     },
     notes: { type: String, default: '' },
+    customFields: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
     priority: { type: String, enum: ['low', 'normal', 'high', 'urgent'], default: 'normal' },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -40,4 +41,3 @@ const contactSchema = new mongoose.Schema(
 )
 
 export default mongoose.model('Contact', contactSchema)
-

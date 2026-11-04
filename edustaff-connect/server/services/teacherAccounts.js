@@ -51,4 +51,3 @@ export async function createTeacherAccount(input) {
   await verifyPersisted(User, user._id, 'teacher account')
   return user
 }
-

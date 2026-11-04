@@ -7,6 +7,7 @@ import { publicUser } from '../rbac.js'
 import { assertWriteAcknowledged, databaseStatus, switchDatabase, testDatabaseConnection, verifyPersisted } from '../db.js'
 import { publicDatabaseConfig, resolveDatabaseConfig } from '../databaseConfig.js'
 import { inspectLocalMongo, setupLocalMongo } from '../services/localMongo.js'
+import { ensureDesignatedAdmin } from '../migrate.js'
 
 const router = express.Router()
 router.use(authenticate, requireAdmin)
@@ -45,6 +46,7 @@ router.post('/database/test', limitDatabaseOperation('test', 10), async (req, re
 router.post('/database/switch', limitDatabaseOperation('switch', 15), async (req, res) => {
   try {
     const result = await switchDatabase({ provider: req.body?.provider, databaseName: req.body?.databaseName }, req.user.email || req.user.adminId)
+    await ensureDesignatedAdmin()
     return res.json(result)
   } catch (error) {
     return res.status(error.code === 'DATABASE_OPERATION_IN_PROGRESS' ? 409 : 503).json({ code: error.code || 'DATABASE_SWITCH_FAILED', message: error.message, status: databaseStatus() })

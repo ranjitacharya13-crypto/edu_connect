@@ -13,8 +13,10 @@ export function hashPassword(password, salt = crypto.randomBytes(16).toString('h
 }
 
 export function verifyPassword(password, stored) {
+  if (typeof password !== 'string' || typeof stored !== 'string') return false
   if (!stored?.includes(':')) return stored === password
   const [salt, digest] = stored.split(':')
+  if (!salt || !/^[a-f\d]{128}$/i.test(digest || '')) return false
   const candidate = crypto.scryptSync(password, salt, 64)
   return crypto.timingSafeEqual(candidate, Buffer.from(digest, 'hex'))
 }

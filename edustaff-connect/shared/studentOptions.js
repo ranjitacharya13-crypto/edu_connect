@@ -20,4 +20,3 @@ export function canonicalAdmissionType(value) {
 export function canonicalDepartment(value, admissionType) {
   return canonicalStudentOption(value, departmentsForAdmissionType(admissionType))
 }
-

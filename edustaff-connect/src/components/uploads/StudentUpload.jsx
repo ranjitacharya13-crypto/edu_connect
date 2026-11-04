@@ -6,13 +6,27 @@ import { STUDENT_ADMISSION_TYPES as ADMISSION_TYPE_OPTIONS, departmentsForAdmiss
 
 const STUDENT_CSV_HEADERS = 'Student Name,Admission Type,Department,Parent/Guardian Phone,Notes'
 
-function downloadStudentTemplate() {
-  const csv = `${STUDENT_CSV_HEADERS}\n"Arun Kumar","Regular","CSE","9876543210","Sample record"\n"Karthik Raj","Part Time","EEE","9988776655","Sample record"\n`
+function downloadStudentTemplate(fields = []) {
+  const importableFields = fields.filter((field) => field.importable && field.state === 'active')
+  const csvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`
+  const headers = [...STUDENT_CSV_HEADERS.split(','), ...importableFields.map((field) => field.label)].map(csvCell).join(',')
+  const sample = (name, admissionType, department, phone) => [
+    name, admissionType, department, phone, 'Sample record', ...importableFields.map(() => ''),
+  ].map(csvCell).join(',')
+  const csv = `${headers}\n${sample('Arun Kumar', 'Regular', 'CSE', '9876543210')}\n${sample('Karthik Raj', 'Part Time', 'EEE', '9988776655')}\n`
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
   const link = document.createElement('a'); link.href = url; link.download = 'educonnect-students-template.csv'; link.click(); URL.revokeObjectURL(url)
 }
 
-export default function StudentUpload({ onSuccess, onCancel, user }) {
+function CustomFieldInput({ field, value, onChange }) {
+  const common = { value: value ?? (field.type === 'boolean' ? false : ''), required: field.required, 'aria-required': field.required, onChange: (event) => onChange(field.type === 'boolean' ? event.target.checked : event.target.value), className: 'mt-1 h-11 w-full rounded-xl border border-slate-300/70 bg-white/65 px-4 text-sm font-bold outline-none' }
+  if (field.type === 'boolean') return <label className="flex items-center gap-2 rounded-xl border bg-white/65 p-3 text-sm font-black"><input type="checkbox" required={field.required} aria-required={field.required} checked={Boolean(common.value)} onChange={common.onChange} className="size-4 accent-blue-700" />{field.label}{field.required ? ' *' : ''}</label>
+  if (field.type === 'long_text') return <label className="block text-sm font-black text-slate-700">{field.label}{field.required ? ' *' : ''}<textarea {...common} rows={3} maxLength={5000} className="mt-1 w-full rounded-xl border border-slate-300/70 bg-white/65 px-4 py-3 text-sm font-bold outline-none" /></label>
+  if (['select', 'multi_select'].includes(field.type)) return <label className="block text-sm font-black text-slate-700">{field.label}{field.required ? ' *' : ''}<select {...common} multiple={field.type === 'multi_select'} value={value ?? (field.type === 'multi_select' ? [] : '')} onChange={(event) => onChange(field.type === 'multi_select' ? [...event.target.selectedOptions].map((option) => option.value) : event.target.value)}><option value="" disabled={field.type === 'multi_select'}>Select</option>{(field.options || []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+  return <label className="block text-sm font-black text-slate-700">{field.label}{field.required ? ' *' : ''}<input {...common} maxLength={field.type === 'text' ? 500 : undefined} type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : field.type === 'phone' ? 'tel' : 'text'} placeholder={field.placeholder || ''} /></label>
+}
+
+export default function StudentUpload({ onSuccess, onCancel, user, customFields = [], isModal = false }) {
   const [accountType, setAccountType] = useState('student')
   const [activeTab, setActiveTab] = useState('manual') // 'manual' or 'csv'
   const [loading, setLoading] = useState(false)
@@ -26,6 +40,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
     department: '',
     guardianPhone: '',
     notes: '',
+    customFields: {},
   })
 
   // CSV upload state
@@ -79,10 +94,11 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
         department: '',
         guardianPhone: '',
         notes: '',
+        customFields: {},
       })
       if (onSuccess) onSuccess(response.data.contact)
     } catch (error) {
-      setErrors(error.response?.data?.errors || ['Failed to add student'])
+      setErrors(error.response?.data?.errors || [error.response?.data?.message || 'Failed to add student'])
     } finally {
       setLoading(false)
     }
@@ -150,11 +166,11 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
   }
 
   return (
-    <div className="glass-panel mx-auto w-full max-w-4xl rounded-2xl border p-4 shadow-glass sm:p-6">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <h2 className="min-w-0 text-xl font-black text-slate-900 sm:text-2xl">{accountType === 'teacher' ? 'Teacher Upload' : 'Student Upload'}</h2>
+    <div {...(isModal ? { role: 'dialog', 'aria-modal': true, 'aria-labelledby': 'student-upload-title' } : {})} className={`upload-panel mx-auto w-full rounded-3xl border bg-white p-4 text-slate-900 shadow-glass sm:p-6 ${isModal ? 'flex max-h-[calc(100dvh-1.5rem)] max-w-2xl flex-col overflow-y-auto shadow-[0_20px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100dvh-2rem)]' : 'max-w-4xl'}`}>
+      <div className={`${isModal ? 'sticky top-0 z-10 -mx-4 -mt-4 shrink-0 border-b border-slate-200 bg-white px-4 sm:-mx-6 sm:-mt-6 sm:px-6' : ''} mb-4 flex items-center justify-between gap-3 py-2`}>
+        <h2 id="student-upload-title" className="min-w-0 text-xl font-black text-slate-900 sm:text-2xl">{accountType === 'teacher' ? 'Teacher Upload' : 'Student Upload'}</h2>
         {onCancel && (
-          <button onClick={onCancel} className="text-slate-500 hover:text-slate-700">
+          <button type="button" onClick={onCancel} aria-label="Close student upload" className="grid size-10 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700">
             <X size={24} />
           </button>
         )}
@@ -205,6 +221,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
       {/* Manual Entry Form */}
       {activeTab === 'manual' && (
         <form onSubmit={handleManualSubmit} className="space-y-4">
+          {errors.some((error) => !['studentName', 'admissionType', 'department', 'guardianPhone'].includes(error)) && <ul role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{errors.filter((error) => !['studentName', 'admissionType', 'department', 'guardianPhone'].includes(error)).map((error) => <li key={error}>{error}</li>)}</ul>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-black text-slate-700 mb-1">
@@ -297,6 +314,8 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
             </div>
           </div>
 
+          {customFields.filter((field) => field.formVisible && field.state === 'active').map((field) => <CustomFieldInput key={field.key} field={field} value={formData.customFields?.[field.key]} onChange={(value) => { setErrors([]); setFormData((current) => ({ ...current, customFields: { ...current.customFields, [field.key]: value } })) }} />)}
+
           <div>
             <label className="block text-sm font-black text-slate-700 mb-1">
               Notes
@@ -311,7 +330,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
             />
           </div>
 
-          <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
+          <div className={`${isModal ? 'sticky bottom-0 -mx-4 -mb-4 mt-2 border-t border-slate-200 bg-white p-4 pt-3 sm:-mx-6 sm:-mb-6 sm:p-6' : 'pt-4'} flex flex-col-reverse gap-3 sm:flex-row`}>
             <button
               type="submit"
               disabled={loading}
@@ -506,7 +525,7 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
 
           {/* Sample CSV Template */}
           <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200/70">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="font-black text-slate-700">Sample CSV Format:</p><button type="button" onClick={downloadStudentTemplate} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700"><Download size={14} /> Download template</button></div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="font-black text-slate-700">Sample CSV Format:</p><button type="button" onClick={() => downloadStudentTemplate(customFields)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700"><Download size={14} /> Download template</button></div>
             <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
               Student Name,Admission Type,Department,Parent/Guardian Phone,Notes
               <br />
@@ -521,4 +540,3 @@ export default function StudentUpload({ onSuccess, onCancel, user }) {
     </div>
   )
 }
-

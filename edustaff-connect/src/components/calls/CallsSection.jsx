@@ -29,6 +29,8 @@ const FILTERS = [
   { key: 'ringing', label: 'In progress' },
   { key: 'attended', label: 'Attended' },
   { key: 'unanswered', label: 'Unanswered' },
+  { key: 'interested', label: 'Interested' },
+  { key: 'not_interested', label: 'Not interested' },
 ]
 
 function StatusBadge({ status }) {
@@ -53,21 +55,24 @@ function SummaryCard({ icon: Icon, value, label, accent }) {
 }
 
 /** One row of the call history, with its notes folded underneath. */
-function CallCard({ call, user, onSetStatus, onAddNote, onDelete, busyId }) {
+function CallCard({ call, user, onSetStatus, onAddNote, onSetNoteInterest, onDelete, busyId }) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState('')
+  const [interest, setInterest] = useState('')
   const [saving, setSaving] = useState(false)
   const notes = call.notes || []
   const isRinging = call.status === 'ringing'
   const busy = busyId === call._id
 
-  async function submitNote(event) {
-    event.preventDefault()
-    if (!note.trim()) return
+  async function submitNote(event, selectedInterest = interest) {
+    event?.preventDefault()
+    const summary = note.trim() || (selectedInterest === 'interested' ? 'Interested' : selectedInterest === 'not_interested' ? 'Not interested' : '')
+    if (!summary) return
     setSaving(true)
     try {
-      await onAddNote(call, note.trim())
+      await onAddNote(call, summary, selectedInterest)
       setNote('')
+      setInterest('')
     } finally {
       setSaving(false)
     }
@@ -145,18 +150,27 @@ function CallCard({ call, user, onSetStatus, onAddNote, onDelete, busyId }) {
               className="h-11 flex-1 rounded-xl border border-slate-300/70 bg-white/70 px-4 text-sm font-bold outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             />
             <button
-              disabled={saving || !note.trim()}
+              disabled={saving || (!note.trim() && !interest)}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-black text-white transition hover:bg-blue-800 disabled:opacity-50"
             >
               <Send size={15} />
               {saving ? 'Saving…' : 'Save note'}
             </button>
           </form>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-black text-slate-500">Category:</span>
+            <button type="button" onClick={() => { const next = interest === 'interested' ? '' : 'interested'; setInterest(next); if (next && !note.trim()) submitNote(undefined, next) }} className={`rounded-lg px-3 py-1.5 text-xs font-black ${interest === 'interested' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'}`}>Interested</button>
+            <button type="button" onClick={() => { const next = interest === 'not_interested' ? '' : 'not_interested'; setInterest(next); if (next && !note.trim()) submitNote(undefined, next) }} className={`rounded-lg px-3 py-1.5 text-xs font-black ${interest === 'not_interested' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-800'}`}>Not interested</button>
+          </div>
 
           <div className="mt-3 space-y-2">
             {notes.map((entry) => (
               <div key={entry._id} className="rounded-xl border border-slate-200/60 bg-white/60 p-3">
                 <p className="whitespace-pre-wrap text-sm font-bold text-slate-700">{entry.summary}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" disabled={saving} onClick={() => onSetNoteInterest(call, entry, 'interested')} className={`rounded-lg px-2.5 py-1.5 text-xs font-black ${entry.interest === 'interested' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'}`}>Interested</button>
+                  <button type="button" disabled={saving} onClick={() => onSetNoteInterest(call, entry, 'not_interested')} className={`rounded-lg px-2.5 py-1.5 text-xs font-black ${entry.interest === 'not_interested' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-800'}`}>Not interested</button>
+                </div>
                 <p className="mt-1.5 text-[11px] font-black uppercase tracking-wide text-slate-400">
                   {entry.createdBy} · {new Date(entry.createdAt).toLocaleString()}
                 </p>
@@ -174,7 +188,7 @@ function CallCard({ call, user, onSetStatus, onAddNote, onDelete, busyId }) {
   )
 }
 
-export default function CallsSection({ calls, summary, user, onSetStatus, onAddNote, onDelete, busyId, loading }) {
+export default function CallsSection({ calls, summary, user, onSetStatus, onAddNote, onSetNoteInterest, onDelete, busyId, loading }) {
   const [filter, setFilter] = useState('all')
 
   const visible = useMemo(() => {
@@ -182,6 +196,7 @@ export default function CallsSection({ calls, summary, user, onSetStatus, onAddN
     if (filter === 'unanswered') {
       return calls.filter((call) => ['missed', 'no-answer', 'busy', 'wrong-number'].includes(call.status))
     }
+    if (filter === 'interested' || filter === 'not_interested') return calls.filter((call) => call.notes?.some((note) => note.interest === filter))
     return calls.filter((call) => call.status === filter)
   }, [calls, filter])
 
@@ -222,6 +237,7 @@ export default function CallsSection({ calls, summary, user, onSetStatus, onAddN
             user={user}
             onSetStatus={onSetStatus}
             onAddNote={onAddNote}
+            onSetNoteInterest={onSetNoteInterest}
             onDelete={onDelete}
             busyId={busyId}
           />

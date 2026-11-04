@@ -8,6 +8,8 @@ import { requireAdmin } from '../auth.js'
 import { createTeacherAccount, TEACHER_CSV_HEADERS } from '../services/teacherAccounts.js'
 import { parseTeacherCsv } from '../services/teacherCsv.js'
 import { canonicalAdmissionType, canonicalDepartment, departmentsForAdmissionType } from '../../shared/studentOptions.js'
+import CustomField from '../models/CustomField.js'
+import { validateValues } from '../services/customFields.js'
 
 const router = express.Router()
 router.use(authenticate)
@@ -88,7 +90,7 @@ function parseCsvRows(csvString) {
   return rows
 }
 
-function parseCSV(csvString) {
+function parseCSV(csvString, customFields = []) {
   const rows = parseCsvRows(csvString)
   if (rows.length < 2) throw new Error('CSV file must have a header and at least one data row')
 
@@ -99,7 +101,8 @@ function parseCSV(csvString) {
     throw new Error(`Duplicate CSV headers: ${[...new Set(duplicateHeaders)].join(', ')}`)
   }
 
-  const mappedHeaders = normalizedHeaders.map((header) => HEADER_ALIASES.get(header))
+  const customHeaders = new Map(customFields.flatMap((field) => [[normalizeHeader(field.key), `custom:${field.key}`], [normalizeHeader(field.label), `custom:${field.key}`]]))
+  const mappedHeaders = normalizedHeaders.map((header) => HEADER_ALIASES.get(header) || customHeaders.get(header))
   const duplicateMappedHeaders = mappedHeaders.filter((header, index) => header && mappedHeaders.indexOf(header) !== index)
   if (duplicateMappedHeaders.length) {
     throw new Error(`Duplicate CSV headers: ${[...new Set(duplicateMappedHeaders)].join(', ')}`)
@@ -109,6 +112,8 @@ function parseCSV(csvString) {
     return !mappedHeaders.includes(alias)
   })
   if (missingColumns.length) throw new Error(`Missing required columns: ${missingColumns.join(', ')}`)
+  const unknownHeaders = sourceHeaders.filter((_header, index) => !mappedHeaders[index])
+  if (unknownHeaders.length) throw new Error(`Unknown CSV columns: ${unknownHeaders.join(', ')}`)
 
   const data = []
   const errors = []
@@ -133,6 +138,17 @@ function parseCSV(csvString) {
       rowErrors.push(`Department is invalid for ${admissionType || raw.admissionType || 'the selected Admission Type'}: ${raw.department || '(empty)'}. Accepted values: ${allowedDepartments.join(', ') || 'none'}`)
     }
     if (!raw.guardianPhone) rowErrors.push('Parent/Guardian Phone is required')
+    const customValues = {}
+    mappedHeaders.forEach((header, valueIndex) => {
+      if (!header?.startsWith('custom:')) return
+      const key = header.slice(7)
+      const field = customFields.find((item) => item.key === key)
+      const value = values[valueIndex] || ''
+      customValues[key] = field?.type === 'multi_select' && value
+        ? value.split(';').map((item) => item.trim()).filter(Boolean)
+        : value
+    })
+    try { validateValues(customFields, customValues, { partial: false }) } catch (error) { rowErrors.push(error.message) }
 
     if (rowErrors.length) {
       errors.push(`Row ${index + 1}: ${rowErrors.join('; ')}`)
@@ -144,6 +160,7 @@ function parseCSV(csvString) {
       department,
       guardianPhone: raw.guardianPhone,
       notes: raw.notes || '',
+      customFields: validateValues(customFields, customValues, { partial: true }),
     })
   }
 
@@ -163,6 +180,7 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
       department,
       guardianPhone,
       notes,
+      customFields = {},
     } = req.body
 
     // Validate required fields
@@ -173,6 +191,8 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
       errors.push('Department is invalid for the selected admission type')
     }
     if (!guardianPhone) errors.push('Guardian phone is required')
+    let validatedCustomFields
+    try { validatedCustomFields = validateValues(await CustomField.find({ state: 'active' }).lean(), customFields, { partial: false }) } catch (error) { errors.push(error.message) }
 
     if (errors.length > 0) {
       return res.status(400).json({ errors })
@@ -190,6 +210,7 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
       relationship: 'Guardian',
       createdBy: req.user._id,
       notes: notes || '',
+      customFields: validatedCustomFields || {},
     })
     await verifyPersisted(Contact, contact._id, 'manual student contact')
 
@@ -210,14 +231,15 @@ router.post('/manual', requirePermission('canUploadStudents'), async (req, res) 
 /**
  * POST /api/uploads/csv/preview - Preview CSV data
  */
-router.post('/csv/preview', requirePermission('canBulkUpload'), upload.single('file'), (req, res) => {
+router.post('/csv/preview', requirePermission('canBulkUpload'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' })
     }
 
     const csvString = req.file.buffer.toString('utf8')
-    const { data, errors, totalRows } = parseCSV(csvString)
+    const fields = await CustomField.find({ state: 'active', importable: true }).lean()
+    const { data, errors, totalRows } = parseCSV(csvString, fields)
 
     res.json({
       success: true,
@@ -245,7 +267,8 @@ router.post('/csv/import', requirePermission('canBulkUpload'), upload.single('fi
     }
 
     const csvString = req.file.buffer.toString('utf8')
-    const { data, errors, totalRows } = parseCSV(csvString)
+    const fields = await CustomField.find({ state: 'active', importable: true }).lean()
+    const { data, errors, totalRows } = parseCSV(csvString, fields)
 
     const importedContacts = []
     const failedImports = [...errors]
@@ -262,6 +285,7 @@ router.post('/csv/import', requirePermission('canBulkUpload'), upload.single('fi
             department: row.department,
           },
           notes: row.notes || '',
+          customFields: row.customFields || {},
           relationship: 'Guardian',
           createdBy: req.user._id,
         })
@@ -331,4 +355,3 @@ router.post('/teachers/csv/import', teacherUpload.single('file'), async (req, re
 })
 
 export default router
-

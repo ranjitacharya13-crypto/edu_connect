@@ -13,6 +13,19 @@ let lastOperation = { status: 'idle', completedAt: null, message: '' }
 const providerHealth = new Map()
 let activeOperations = 0
 
+const databaseUnavailableNames = new Set([
+  'MongoNetworkError',
+  'MongoNetworkTimeoutError',
+  'MongoServerSelectionError',
+  'MongooseServerSelectionError',
+  'MongoTopologyClosedError',
+])
+const databaseUnavailableCodes = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'])
+
+export function isDatabaseUnavailable(error) {
+  return databaseUnavailableNames.has(error?.name) || databaseUnavailableCodes.has(error?.code)
+}
+
 function active() {
   if (!activeConfig) activeConfig = resolveDatabaseConfig()
   return activeConfig
@@ -162,7 +175,7 @@ function scheduleReconnect() {
 }
 
 mongoose.connection.on('disconnected', () => { if (hasConnected) { console.error('MongoDB disconnected; reconnect scheduled'); scheduleReconnect() } })
-mongoose.connection.on('error', (error) => console.error('MongoDB runtime error:', error.message))
+mongoose.connection.on('error', (error) => console.error('MongoDB runtime error:', { name: error?.name, code: error?.code }))
 
 export async function verifyPersisted(Model, id, label = 'document') {
   if (!id || !(await Model.exists({ _id: id }))) throw new Error(`${label} write could not be verified`)
@@ -173,4 +186,3 @@ export function assertWriteAcknowledged(result, label = 'database') {
   if (!result?.acknowledged) throw new Error(`${label} write was not acknowledged`)
   return result
 }
-
