@@ -107,8 +107,12 @@ export function databaseStatus() {
       const probe = providerHealth.get(`${provider}:${providerConfig.databaseName}`)
       const checkedAtMs = probe?.checkedAt ? Date.parse(probe.checkedAt) : NaN
       const stale = !Number.isFinite(checkedAtMs) || Date.now() - checkedAtMs > HEALTH_MAX_AGE_MS
-      const status = !probe ? 'unknown' : stale ? 'stale' : probe.connected ? 'connected' : 'error'
-      providers[provider] = { ...publicDatabaseConfig(providerConfig), connected: !stale && Boolean(probe?.connected), status, stale, lastCheckedAt: probe?.checkedAt || null, lastSuccessfulAt: probe?.lastSuccessfulAt || null, latencyMs: probe?.latencyMs ?? null, message: probe?.message || '' }
+      // The active Mongoose connection is authoritative for the selected provider.
+      // A delayed probe must not make a live database appear stale in the UI.
+      const activeConnection = provider === config.provider && connected
+      const providerConnected = activeConnection || (!stale && Boolean(probe?.connected))
+      const status = providerConnected ? 'connected' : !probe ? 'unknown' : stale ? 'stale' : 'error'
+      providers[provider] = { ...publicDatabaseConfig(providerConfig), connected: providerConnected, status, stale: !providerConnected && stale, lastCheckedAt: probe?.checkedAt || null, lastSuccessfulAt: probe?.lastSuccessfulAt || null, latencyMs: probe?.latencyMs ?? null, message: probe?.message || '' }
     } catch (error) {
       providers[provider] = { provider, configured: false, connected: false, message: error.message, code: error.code || 'DATABASE_CONFIG_ERROR' }
     }
