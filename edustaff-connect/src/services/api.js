@@ -1,0 +1,141 @@
+import axios from 'axios'
+
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+const nativeBuildMissingApiUrl = false
+const configuredApiUrl = (() => {
+  if (!configuredApiBaseUrl) return null
+  try { return new URL(configuredApiBaseUrl) } catch { return null }
+})()
+const isNgrokApi = false
+
+const api = axios.create({
+  // Capacitor builds can point at the deployed HTTPS API while the browser
+  // build keeps using the same-origin Vite proxy.
+  baseURL: configuredApiBaseUrl?.replace(/\/+$/, '') || '/api',
+  headers: {
+    'Content-Type': 'application/json',
+    // Free ngrok endpoints show an HTML warning page to clients without this
+    // header. Native builds call the public API directly, so that page must not
+    // be mistaken for a successful JSON API response.
+    ...(isNgrokApi ? { 'ngrok-skip-browser-warning': 'true' } : {}),
+  },
+  timeout: 15000,
+})
+
+api.interceptors.request.use((config) => {
+  if (nativeBuildMissingApiUrl) {
+    return Promise.reject(Object.assign(new Error('Android API URL is not configured'), { code: 'API_BASE_URL_MISSING' }))
+  }
+  const token = localStorage.getItem('edustaff_token')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+// Return to login when a protected request proves that the server-side
+// session is no longer valid. Login's own 401 is left for the form to handle.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || ''
+    if (error.response?.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/signup')) {
+      localStorage.removeItem('edustaff_token')
+      window.dispatchEvent(new Event('edustaff:session-expired'))
+    }
+    return Promise.reject(error)
+  },
+)
+
+export const authApi = {
+  signup: (data) => api.post('/auth/signup', data).then((r) => r.data),
+  login: (data) => api.post('/auth/login', data).then((r) => r.data),
+  me: () => api.get('/auth/me').then((r) => r.data),
+  logout: () => api.post('/auth/logout'),
+}
+
+export const adminApi = {
+  metrics: () => api.get('/admin/metrics').then((r) => r.data),
+  teachers: () => api.get('/admin/teachers').then((r) => r.data),
+  databaseStatus: () => api.get('/admin/database/status').then((r) => r.data),
+  databaseTest: (provider, databaseName) => api.post('/admin/database/test', { provider, databaseName }).then((r) => r.data),
+  databaseSwitch: (provider, databaseName) => api.post('/admin/database/switch', { provider, databaseName }).then((r) => r.data),
+  setupLocalDatabase: () => api.post('/admin/database/setup-local').then((r) => r.data),
+  detectLocalDatabase: () => api.get('/admin/database/local-detection').then((r) => r.data),
+  deleteTeacher: (id) => api.delete(`/admin/teachers/${id}`),
+  assignContact: (contactId, teacherId) =>
+    api.patch(`/admin/contacts/${contactId}/assignment`, { teacherId }).then((r) => r.data),
+  assignContacts: (contactIds, teacherId) =>
+    api.patch('/admin/contacts/bulk-assignment', { contactIds, teacherId }).then((r) => r.data),
+}
+
+export const customFieldsApi = {
+  list: (includeArchived = false) => api.get('/custom-fields', { params: includeArchived ? { includeArchived: true } : {} }).then((r) => r.data),
+  create: (data) => api.post('/custom-fields', data).then((r) => r.data),
+  update: (id, data) => api.patch(`/custom-fields/${id}`, data).then((r) => r.data),
+  restore: (id) => api.post(`/custom-fields/${id}/restore`).then((r) => r.data),
+}
+
+export const teacherUploadApi = {
+  create: (data) => api.post('/uploads/teachers/manual', data).then((r) => r.data),
+  preview: (file) => { const data = new FormData(); data.append('file', file); return api.post('/uploads/teachers/csv/preview', data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data) },
+  import: (file) => { const data = new FormData(); data.append('file', file); return api.post('/uploads/teachers/csv/import', data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data) },
+}
+
+// --- Contacts ---
+export const contactsApi = {
+  list: (search) =>
+    api.get('/contacts', { params: typeof search === 'object' ? search : { search } }).then((r) => {
+      if (!r.data || typeof r.data !== 'object' || !Array.isArray(r.data.contacts)) {
+        throw new Error('Contacts service returned an invalid response. Check the public API endpoint.')
+      }
+      return r.data
+    }),
+
+  exportCsv: (params = {}) => api.get('/contacts/export', { params, responseType: 'blob' }).then((r) => r.data),
+
+  create: (data) => api.post('/contacts', data).then((r) => r.data),
+
+  update: (id, data) => api.patch(`/contacts/${id}`, data).then((r) => r.data),
+
+  remove: (id) => api.delete(`/contacts/${id}`).then((r => r.status === 204)),
+}
+
+// --- Activities ---
+export const activitiesApi = {
+  list: () => api.get('/activities').then((r) => r.data),
+
+  create: (data) => api.post('/activities', data).then((r) => r.data),
+
+  update: (id, data) =>
+    api.patch(`/activities/${id}`, data).then((r) => r.data),
+}
+
+// --- Calls (tracked call history + the notes attached to each call) ---
+export const callsApi = {
+  list: (params) => api.get('/calls', { params }).then((r) => r.data),
+
+  // Called the moment the teacher taps the call button.
+  start: (contactId) => api.post('/calls', { contactId }).then((r) => r.data),
+
+  // Record the outcome: attended, missed, no-answer, busy, ...
+  setStatus: (id, status, extra = {}) =>
+    api.patch(`/calls/${id}`, { status, ...extra }).then((r) => r.data),
+
+  notes: (id) => api.get(`/calls/${id}/notes`).then((r) => r.data),
+
+  addNote: (id, summary, interest = '') =>
+    api.post(`/calls/${id}/notes`, { summary, interest }).then((r) => r.data),
+
+  setNoteInterest: (callId, noteId, interest) =>
+    api.patch(`/calls/${callId}/notes/${noteId}`, { interest }).then((r) => r.data),
+
+  remove: (id) => api.delete(`/calls/${id}`).then((r) => r.status === 204),
+}
+
+export const communicationsApi = {
+  history: (contactId) => api.get(`/communications/contact/${contactId}`).then((r) => r.data),
+  sendSms: (contactId, message, idempotencyKey) => api.post('/communications/sms', { contactId, message, idempotencyKey }).then((r) => r.data),
+  startCall: (contactId, idempotencyKey) => api.post('/communications/call', { contactId, idempotencyKey }).then((r) => r.data),
+  setCallOutcome: (id, outcome) => api.patch(`/communications/call/${id}`, { outcome }).then((r) => r.data),
+}
+
+export default api

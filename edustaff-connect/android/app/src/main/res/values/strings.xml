@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EduConnect</string>
+    <string name="title_activity_main">EduConnect</string>
+    <string name="package_name">com.educonnect.edustaff</string>
+    <string name="custom_url_scheme">com.educonnect.edustaff</string>
+</resources>
